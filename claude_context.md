@@ -228,21 +228,55 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   `reciter_audit.json`: `warsh/` and both Mujawwad dirs excluded, al-Ajamy
   duplicate correctly flagged not double-counted, 40-key coverage computed
   per reciter.
-  **Gap found, not yet resolved:** the agent's own script docstring says
+  **Gap found (resolved session 4):** the agent's own script docstring said
   `_catalog.json`/`_metadata`/`_registry` were checked and "carry riwayah,
   verse counts and provenance but no performance-style field" — so
   classification fell back to directory-name matching for all 32 dirs, and
-  27 of them ended up `unknown` (only the ones with Muallim/Murattal/Mujawwad
-  literally in the name got classified). This may be a correct finding
-  (the catalog genuinely may lack a style field) or the agent may not have
-  looked hard enough — I can't verify bucket contents from this container
-  (no GCS network access here). Worth a direct question to the agent before
-  picking reciters from the `unknown` bucket.
-  **Also not yet confirmed:** Part C step 8 (download 6 shortlisted mp3s
-  across 2 full-coverage reciters, report duration/sample-rate/channels) —
-  no output for this was committed (audio isn't meant to be committed, so
-  that's expected) and no report text came through either. Need to ask the
-  user/agent for those 6 numbers directly.
+  27 of them ended up `unknown`. See "Session 4 result" below for the
+  confirmed resolution.
+  **Also not yet confirmed (resolved session 4):** Part C step 8 (download 6
+  shortlisted mp3s across 2 full-coverage reciters, report duration/sample-
+  rate/channels) — no output for this was committed and no report text came
+  through either. See "Session 4 result" below.
+- **Session 4 result:** verified session-3's two gaps directly from git
+  history (agent's chat reports keep not surviving the push — verify from
+  commits, not prose, every time). Two commits on the same branch:
+  - `816628b` — Gap 1, resolved cleanly. Confirmed directly (now recorded in
+    both a code comment and a new `style_metadata_note` key inside
+    `reciter_audit.json` itself, not just a docstring): `_catalog.json`,
+    `_registry/registry.json`, `_registry/registry_history/*.json`, and all
+    31 `_metadata/*/reciter.json` files genuinely carry no style/type/
+    category field, and every `note` field is empty — the catalog really
+    doesn't have this data, the agent hadn't missed it. Added a
+    `classification_source` field (`name-keyword`/`common-knowledge`/`none`)
+    and a curated 26-name `KNOWN_MURATTAL` fallback map, name-match still
+    taking precedence. All 32 dirs now classified except `warsh` (stays
+    `unknown`, already excluded anyway). Sudais/Shuraim/Hudhaify/Ayyoub/
+    Basfar — the names flagged for sanity-checking — all landed Murattal as
+    expected. Caveat worth keeping in mind: the common-knowledge fallback is
+    the agent's own general knowledge asserting these 26 are Murattal, same
+    epistemic weight as our own naming sanity-check, not an independent data
+    source — reasonable and well-documented, but not a hard fact pulled from
+    the bucket. 112 tests still pass (metadata-only change).
+  - `852c6fe` — Gap 2, resolved after a nudge (pushed shortly after being
+    asked about; wasn't in the first commit at all — not a "report lost on
+    push" case like sessions 2-3, this time the work itself came later).
+    New `pron_ffprobe_scratch.py` + committed `ffprobe_scratch.json` (numbers
+    only, verified no mp3s in the diff). 3 keys from `pron_shortlist_v2.csv`
+    (`068030`, `026148` type A; `023041` type B — confirmed against the CSV
+    directly) × 2 full-coverage reciters (`Husary_Muallim_128kbps`,
+    `Minshawy_Murattal_128kbps`). All 6 files: 44100Hz, stereo, mp3, 128kbps.
+    Durations: Husary_Muallim 068030=12.83s, 026148=10.71s, 023041=24.19s;
+    Minshawy_Murattal 068030=7.22s, 026148=6.04s, 023041=14.35s. Notable for
+    later: same ayah runs ~2x longer under Husary_Muallim than
+    Minshawy_Murattal (12.8s vs 7.2s on 068030) — a real pacing difference
+    between "measured teaching" and "standard Murattal" style, worth
+    remembering if cross-reciter pacing consistency ever matters.
+  **Working-mode lesson reinforced:** this repo's agent's plain-text chat
+  reports have now failed to survive 3 sessions running. Stop asking for
+  numbers "in the reply" — the prompt template should require committing any
+  requested numbers/analysis into a small file, the way Gap 2's fix finally
+  did, even for read-only/analysis asks.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -266,10 +300,8 @@ reasoning to produce? If yes, write the agent a prompt instead.
 
 ## Natural next steps (whenever resumed)
 
-1. Resolve the two session-3 gaps above: (a) ask the agent to confirm/dig
-   deeper on whether the catalog really has no performance-style field before
-   trusting the `unknown` classifications, (b) get the 6 duration/sample-rate
-   numbers from Part C step 8.
+1. ~~Resolve the two session-3 gaps~~ — done, session 4 (commits `816628b`,
+   `852c6fe`). See "Session 4 result" above.
 2. Pick final reciters (2-3, not 1, per the earlier generalization decision)
    from the full-coverage list and download the 40-ayah audio sets.
 3. Build the merge tool with the alpha=0 bit-for-bit invariant test.
