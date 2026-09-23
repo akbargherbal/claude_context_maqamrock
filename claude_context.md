@@ -324,21 +324,34 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
      25 --type-b-count 15` are CLI defaults, not a hard cap) plus the
      letter-coverage floor mechanics. The actual scored pool is 2,911 ayat
      (1,184 type-A / 1,727 type-B candidates in the 4-12 word band), so 350
-     is well inside it. **Trial-run only, not yet committed**: rescoring at
-     `--type-a-count 219 --type-b-count 131` (350 total, same 62.5/37.5 A/B
-     ratio as before) selects cleanly with `method: density-within-type` —
-     no coverage-floor fallback needed. Letter coverage: ح 166, خ 113, ع 277,
-     ض 86, all comfortably above the floor of 12.
-  Using the real per-reciter pacing data (not an estimate): **350 ayat × 9
-  reciters ≈ 9.4 hours of donor audio** (3,150 unique mp3s), **6,300 training
-  pairs** after dual-script join (dual-script doubles pairs, not audio hours
-  — same file, two captions). For scale sense: MaqamRock's own corpus is
-  18h50m/267 tracks: 350×9 lands at roughly half that, from what is still a
-  cheap download, not a training-compute concern.
-  **Not yet done:** the 350-ayat shortlist is a local trial run, not
-  committed to the repo. Next actual step is an agent task (not yet sent) to
-  rebuild the shortlist at this scale for real, redo the dual-script join and
-  captions (700 `.txt` files at 350×2), and download the 3,150 mp3s.
+     is well inside it. **Verified complete, session 5 (Task 5, agent commit
+     `8cac7a6`)**: rebuilt for real at `--type-a-count 219 --type-b-count 131`
+     — same numbers as the trial run. `method: density-within-type`, no
+     coverage-floor fallback. Letter coverage: ح 166, خ 113, ع 277, ض 86, all
+     comfortably above the floor of 12. **Step 2's re-check of reciter
+     coverage against the NEW 350-key shortlist came back clean** — all 9
+     reciters, 350/350, 0 missing (this was flagged explicitly as unverified
+     at session-4-era assumptions and is now confirmed, not assumed). Dual-
+     script join: 350/350 matched, 3 minor word-count mismatches between
+     editions (020083 u5/s6, 072016 u7/s8, 012039 u9/s10 — expected
+     occasional orthographic variance, not an error). 700 caption files.
+     Test suite: 422 passed (up from 112).
+  Real measured total (not the estimate): **350 ayat × 9 reciters = 8.31
+  hours of donor audio** (29,904.8s), **6,300 training pairs** after dual-
+  script join. Agent commit `8c8c9a1`: 3,150/3,150 mp3s downloaded, 0
+  missing, 0 corrupt, full-corpus ffprobe (not a sample) committed to
+  `data/pron/donor_audio_manifest.json`. Audio itself lives at
+  `data/pron/donor_audio/<reciter>/<key>.mp3`, gitignored, NOT committed —
+  verified directly, no mp3s in either commit's diff. **One real anomaly
+  found, not yet resolved:** 37/3,150 files (~1.2%) came back at unexpected
+  format vs. their directory-implied bitrate — most are harmless (mislabeled
+  bitrate, still full quality), but **14 files in
+  `Abu_Bakr_Ash-Shaatree_128kbps` are genuinely lower quality: 11025Hz,
+  mono, 24kbps**, not just a labeling mismatch. Exact keys are in
+  `unexpected_format_files` inside `donor_audio_manifest.json`. Open
+  decision for next session: keep these 14 as-is, or exclude them (and
+  decide whether that leaves `Abu_Bakr_Ash-Shaatree` materially short of
+  its 350, or is a rounding error against 3,150 total).
   **Also found this session:** the secondary repo carries its own
   `PROGRESS_pron_lora_prep.md` (agent-written, commit `15e3559`, on
   `pron-lora-prep`) — a reproduce-from-scratch doc with exact commands and
@@ -358,22 +371,19 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   exactly the signal a pronunciation adapter needs, so adding them would
   work against the goal, not add useful variety. Don't re-raise this as an
   open gap unless the reasoning above changes.
-  **Session ended with Task 5 in flight (dataset build, not yet verified):**
-  full prompt sent to the agent, same branch, covers: rebuild the shortlist
-  at 350 (`--type-a-count 219 --type-b-count 131`); **re-run
-  `audio_audit.py` against the NEW 350-key shortlist** (old coverage check
-  only ever verified the 9 reciters against the original 40 — this was
-  flagged explicitly, not assumed); redo dual-script join + 700 captions;
-  download all 3,150 mp3s (9 reciters × 350 ayat, NOT committed to git —
-  told the agent to report back where it actually lands); full-corpus
-  ffprobe (not a sample this time) into a committed
-  `data/pron/donor_audio_manifest.json`. **Next session: verify from commits
-  first, same as every prior gap** — check `git log` on `pron-lora-prep` for
-  new commits past `369a299` before trusting any chat-report prose, and
-  specifically check whether Step 2's coverage re-check found any reciter
-  short of full coverage on the new 350 (the prompt told the agent to stop
-  and report rather than silently drop ayat/reciters if so — confirm that
-  didn't happen quietly).
+  **Task 5 (dataset build) fully verified complete, session 5** — see the
+  reciter/ayat-count entries above (agent commits `8cac7a6`, `8c8c9a1`) for
+  the full numbers. The 350-ayah training dataset (text + captions + donor
+  audio) now exists and is verified; the one open item it left behind is the
+  14-file low-quality anomaly noted above.
+  **Framed by the user at session-5 close, for next session:** the task
+  isn't just "resolve the 14 flagged files" — do a broader low-quality
+  gatekeeping pass across the corpus. The 37/3,150 format anomalies were
+  only caught because they were *labeled* wrong (bitrate/sample-rate
+  mismatch); there could be quality issues ffprobe's format fields wouldn't
+  catch at all (clipping, background noise, silence padding, truncated
+  audio). Treat the 14 as the known floor of the problem, not the whole of
+  it — plan an actual filtering pass, not just a patch on the flagged set.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -402,15 +412,16 @@ reasoning to produce? If yes, write the agent a prompt instead.
 2. ~~Pick final reciters~~ — done, session 5: 9 reciters, user's own pick.
    ~~Dataset scale~~ — done, session 5: 350 ayat, dual-script. See "Session 5
    result" above.
-3. **In flight (Task 5 sent, not yet verified)** — agent is rebuilding the
-   350-ayat shortlist, re-checking reciter coverage at 350, redoing the
-   dual-script join + 700 captions, downloading 3,150 mp3s, and running a
-   full-corpus ffprobe into `donor_audio_manifest.json`. Verify from commits
-   on `pron-lora-prep` (past `369a299`) before trusting chat prose — see
-   "Session 5 result" above for exactly what to check first.
-4. Build the merge tool with the alpha=0 bit-for-bit invariant test (main
-   repo, `maqamrock-yue2-lora-finetuning` — not touched yet this project).
-   Independent of the above, can happen in parallel.
+3. ~~Dataset build~~ — done and verified, session 5 (Task 5, agent commits
+   `8cac7a6`, `8c8c9a1`). 350 ayat × 9 reciters, 700 captions, 3,150 mp3s,
+   8.31 hrs audio, 6,300 training pairs. **Open, do this next:** a broader
+   low-quality gatekeeping/filtering pass across the corpus — not just the
+   14 flagged `Abu_Bakr_Ash-Shaatree_128kbps` files (that's the known floor,
+   format-detectable issues only; there may be quality problems ffprobe's
+   format fields can't see at all).
+4. **Do this next:** build the merge tool with the alpha=0 bit-for-bit
+   invariant test (main repo, `maqamrock-yue2-lora-finetuning` — not touched
+   yet this project). Independent of the dataset work, nothing blocking it.
 5. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
    letter-substitution scorecard.
 
