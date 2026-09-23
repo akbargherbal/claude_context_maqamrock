@@ -76,6 +76,10 @@ further maqamrock training would even be about pronunciation, or just style.
   (measured, teaching-style) recitations. `Husary_Muallim` flagged as a good
   candidate. Use multiple reciters, not one, so the adapter generalizes the
   phoneme contrast rather than memorizing one voice.
+  Bucket also holds `warsh/` — EXCLUDE: different riwaya from Tanzil's Hafs
+  text (audio/text mismatch; verse numbering may differ too). Exclude both
+  Mujawwad dirs. Bucket has `_catalog.json`, `_metadata/`, `_registry/`: read
+  them before classifying reciters by folder name alone.
 - Available donor data: GCS bucket
   `gs://sheikh-fitzgerald-backup/ARABIC_DATA/QURAN_VERSE_BY_VERSE_RECITATIONS_DATASETS/`,
   per-verse files named `SSSAAA.mp3` (surah+ayah), many reciters, both
@@ -103,9 +107,10 @@ further maqamrock training would even be about pronunciation, or just style.
   build script used — is **not committed** to the repo, only v1's
   style-only version is): one `.txt` per audio = style/production paragraph,
   then a literal `[Lyrics]` header line, then a section-tagged lyric block
-  (`[Intro]`, `[Verse 1]`, `[Chorus]`, etc.), diacritics preserved, **every
-  lyric line ends in a trailing `...`** (near-certainly a sustained-note /
-  melisma cue).
+  (`[Intro]`, `[Verse 1]`, `[Chorus]`, etc.), diacritics preserved, **lyric lines come in shatr pairs (= one bayt); `...` sits only on the 2nd line of each bayt**
+  (verified on real v2 files, session 2: 9 of 18 lines, strictly alternating) —
+  i.e. it marks the bayt-final / qafiya sustain. Songs = ~9 bayts; Intro = first
+  bayt, Outro = last bayt, both repeated from the body; sections hold 2–4 bayts.
 - For the pronunciation dataset, deviate deliberately:
   - No `arabmaqamrock` trigger word (meaningless without the style LoRA
     loaded during this training; adds noise).
@@ -114,12 +119,19 @@ further maqamrock training would even be about pronunciation, or just style.
     invent a new one) — no Intro/Chorus/Outro arc, since a single ayah isn't
     a song.
   - Style/vocals language should be plain and measured ("clear precise
-    Arabic diction, deliberate measured pace, no melisma"), matching what's
+    Arabic diction, deliberate measured pace"; no melisma/vibrato words at all — see below), matching what's
     actually on a Murattal/Muallim tape — caption and audio should reinforce,
     not fight.
-- **Still need:** a real example `.txt` pair from the actual v2 dataset would
-  be better than the notebook.md single sample if the user has one handy —
-  not blocking, just would tighten the template.
+- **Real v2 samples received (session 2)**: format confirmed — style paragraph,
+  then `[Lyrics]` on the very next line, sections separated by blank lines.
+  Line length 3–7 words (mostly 5–6) = one shatr. Draft pron-caption template:
+  plain, positive-only paragraph (solo male voice, unaccompanied, clear precise
+  Arabic diction, measured pace; deliberately NO mention of melisma/vibrato, either
+  way — negations prime the concept; real guard = donor audio + low rank) → `[Lyrics]` → `[Verse]` → one ayah per line
+  (or 2 consecutive short ayat = one bayt). No `...` even now that we know it is
+  bayt-level: ayat aren't metrical bayts and the sustain cue is the flavor risk.
+  User's own lyrics use rare Uthmani patches (U+0671 alef-wasla, U+06E1 sukun in
+  one word) — mostly standard orthography, supporting dual-script pairing.
 
 ## The big text-orthography idea (potentially the main value driver)
 
@@ -142,17 +154,40 @@ pairing forces the generalization that's actually needed, and doubles the
 effective dataset size for free. Tanzil publishes both editions ready-made, so
 this is a join, not new transcription work.
 
-**Waqf/pause marks:** Quranic pause-annotation signs (ج، صلى، قلى، م, etc.)
-occupy a distinct Unicode sub-range already isolated in the secondary repo:
-`aya_scoring/arabic.py`'s `MARK_CODEPOINTS` includes `range(0x06D6, 0x06EE)`
-separately from the real diacritic range (`0x064B`–`0x0670`). The existing
-`strip_marks()` strips everything (too aggressive — would remove needed
-tashkeel too). Needed: a narrow helper that strips only that pause-mark
-sub-range. **Not yet built.** Late-session reframe worth remembering: these
+**Waqf/pause marks — the narrow-strip range (corrected in session 2):** only
+`0x06D6–0x06DC` are pause signs (ج، صلى، قلى، م…). The wider `0x06D6–0x06ED`
+range in `MARK_CODEPOINTS` is NOT all pause marks — it also holds Uthmani marks
+that carry pronunciation (`06E1` Uthmani sukun, `06E2` iqlab meem, `06E5/06E6`
+small waw/yeh = hidden madd as in هُۥ, `06E8`, `06ED`, `06DF/06E0` silent-letter
+zeros). Dagger alef `0670` (هَٰذَا، لَٰكِن) is likewise protected. Stripping the
+whole range would destroy the orthography that is this project's main value.
+`0x06DD/06DE/06E9` (ayah-end, hizb, sajdah) are pure markers, opt-in strip.
+`06EA–06EC` resolved: each occurs exactly once in the whole Quran (11:41, 12:11,
+41:44) and encodes special readings (imala/ishmam) — keep marks, and exclude
+those 3 ayat from any donor pool (non-standard pronunciation could bleed).
+Helper built: `strip_pause_marks()` in the secondary repo. Also: `06DF` marks
+silent letters (≈4000x, Uthmani only) — the exact class of the `عمرو` bug.
+Pause signs appear in only 1/60 shortlisted ayat (short ayat rarely carry
+them), so waqf handling is nearly moot for the pilot. Late-session reframe worth remembering: these
 marks might not be pure noise to discard — their positions may also carry
 breath/phrasing information the model could learn from. Undecided, don't
 over-index on it, but don't reflexively strip-and-forget either without
 considering it.
+
+## Shortlist skew (found session 2) — live watch-item
+
+Density-sorting inherently favors tiny ayat: median 4 words, 47/60 are ≤5 words
+(max 11), from 33 surahs. Uniformly short clips is exactly the "wrap-up-early"
+risk flagged earlier, now concrete rather than hypothetical. Letter coverage in
+the 60: ع 47 ayat, ح 24, ض 21, خ 17 — ع dominates by frequency. Undecided:
+mix in longer ayat / consecutive-ayah clips, and whether to rebalance letters.
+Real target unit (user, session 2; confirmed by real v2 files): songs are
+Mu'allaqat in classical meters (Tawil/Kamil/Basit/Wafir); one lyric line = one
+shatr ≈ 4–6 words, bayt = 2 lines ≈ 12 words. So: single ayah
+of 4–6 words ≈ one shatr; ≤~12 words or two joined consecutive short ayat ≈ one
+bayt. The old 3–12 filter was arbitrary but its upper bound happens to match a
+bayt; min should rise to 4. Joining ayat = multi-line `[Verse]`; risks: seams
+between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
 
 ## Evaluation plan
 
@@ -169,7 +204,11 @@ considering it.
 - **Dataset scale** — user deferred this ("want to think it through first").
   My proposal (small pilot, ~10-20 ayat × 2-3 reciters, scale only if
   non-regressive improvement shows) is a suggestion, not yet agreed.
-- **Nothing has been built yet.** No scorer run with the letter-weight
+- **Session 2 result:** next-steps 1–3 done by the agent on secondary-repo branch
+  `pron-lora-prep` (commit `aebaf26`, unmerged, 71 tests pass): weighted config,
+  60-ayah shortlist, `strip_pause_marks()`, dual-script JSONL (60/60 matched,
+  no word-count mismatches). Still nothing built for audio/dataset/training.
+  Prior to that: No scorer run with the letter-weight
   override, no ayah shortlist pulled, no waqf-stripping helper written, no
   dual-script join built, no dataset assembled, no training run started. This
   entire session was design/discussion only.
@@ -196,9 +235,17 @@ reasoning to produce? If yes, write the agent a prompt instead.
 
 ## Natural next steps (whenever resumed)
 
-1. Run the difficulty scorer with a ح/خ/ع/ض-weighted config override → get a
-   real candidate ayah shortlist.
-2. Write the narrow waqf-stripping helper (reuse the `0x06D6–0x06ED` range).
-3. Build the Uthmani + simple dual-script per-ayah lyrics join.
-4. Finalize the pronunciation-caption template once/if a real v2 `.txt`
-   example pair is available.
+1. Decide shortlist shape (length mix, letter balance, pilot size), then fetch
+   donor audio (Murattal/Muallim reciters) for the chosen `SSSAAA` keys.
+2. Finalize the pronunciation-caption template (draft exists; user to confirm).
+3. Build the merge tool with the alpha=0 bit-for-bit invariant test.
+4. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
+   letter-substitution scorecard.
+
+## Maintaining this file
+
+Update it proactively (no need to be asked) when a real *insight* lands — a
+decision, a rejected idea and why, a corrected assumption, a guardrail. Not
+details: if it's greppable in a terminal, it doesn't belong here; if it took a
+dedicated script/agent exploration to learn, it does. Keep entries terse and
+correct stale claims in place rather than appending contradictions.
