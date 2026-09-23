@@ -213,12 +213,36 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   v2 caption samples the user provided. Locked the pron-caption template as
   positive-only (no melisma/vibrato mention at all, even negated — user's call,
   confirmed better than my own draft: negation primes the concept in
-  gen-music models). **Task 2 prompt for the agent was fully drafted and
-  agreed but NOT yet sent** at session end (re-cut shortlist to 40, 4-12 words,
-  A/B length types; generate caption .txt pairs; audit donor bucket reciters
-  via `_catalog.json` first, exclude `warsh/` and Mujawwad dirs, dedupe
-  al-Ajamy listing). Session 3 should confirm whether it was sent and, if not,
-  send it before doing anything else.
+  gen-music models). Task 2 prompt was fully drafted and agreed but not sent
+  by session end.
+- **Session 3 result:** Task 2 sent and completed by the agent, same branch
+  (commit `e779626`, 112 tests pass, up from 71). Verified directly (agent's
+  written report didn't come through with the push, same as session 2):
+  `pron_shortlist_v2.csv` — 40 ayat, 25 type A (4-6w) / 15 type B (7-12w)
+  exactly as speced, all four letters ≥16 ayat (no quota rebuild needed), the
+  3 excluded special-reading ayat absent. Dual-script JSONL: 40/40 matched, no
+  count mismatches. Caption `.txt` pairs (80 files): exact layout verified
+  by `tests/test_captions.py`, which also asserts no protected codepoint
+  (session-2-corrected set, `aya_scoring/arabic.py`) was lost vs raw text —
+  good, this is a real regression check, not just a smoke test.
+  `reciter_audit.json`: `warsh/` and both Mujawwad dirs excluded, al-Ajamy
+  duplicate correctly flagged not double-counted, 40-key coverage computed
+  per reciter.
+  **Gap found, not yet resolved:** the agent's own script docstring says
+  `_catalog.json`/`_metadata`/`_registry` were checked and "carry riwayah,
+  verse counts and provenance but no performance-style field" — so
+  classification fell back to directory-name matching for all 32 dirs, and
+  27 of them ended up `unknown` (only the ones with Muallim/Murattal/Mujawwad
+  literally in the name got classified). This may be a correct finding
+  (the catalog genuinely may lack a style field) or the agent may not have
+  looked hard enough — I can't verify bucket contents from this container
+  (no GCS network access here). Worth a direct question to the agent before
+  picking reciters from the `unknown` bucket.
+  **Also not yet confirmed:** Part C step 8 (download 6 shortlisted mp3s
+  across 2 full-coverage reciters, report duration/sample-rate/channels) —
+  no output for this was committed (audio isn't meant to be committed, so
+  that's expected) and no report text came through either. Need to ask the
+  user/agent for those 6 numbers directly.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -242,11 +266,16 @@ reasoning to produce? If yes, write the agent a prompt instead.
 
 ## Natural next steps (whenever resumed)
 
-1. Decide shortlist shape (length mix, letter balance, pilot size), then fetch
-   donor audio (Murattal/Muallim reciters) for the chosen `SSSAAA` keys.
-2. Finalize the pronunciation-caption template (draft exists; user to confirm).
+1. Resolve the two session-3 gaps above: (a) ask the agent to confirm/dig
+   deeper on whether the catalog really has no performance-style field before
+   trusting the `unknown` classifications, (b) get the 6 duration/sample-rate
+   numbers from Part C step 8.
+2. Pick final reciters (2-3, not 1, per the earlier generalization decision)
+   from the full-coverage list and download the 40-ayah audio sets.
 3. Build the merge tool with the alpha=0 bit-for-bit invariant test.
-4. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
+4. Dataset scale is still undecided (user deferred it, session 1) — revisit
+   before assembling the actual training set.
+5. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
    letter-substitution scorecard.
 
 ## Maintaining this file
