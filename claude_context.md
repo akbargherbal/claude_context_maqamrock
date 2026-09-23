@@ -208,10 +208,17 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   `pron-lora-prep` (commit `aebaf26`, unmerged, 71 tests pass): weighted config,
   60-ayah shortlist, `strip_pause_marks()`, dual-script JSONL (60/60 matched,
   no word-count mismatches). Still nothing built for audio/dataset/training.
-  Prior to that: No scorer run with the letter-weight
-  override, no ayah shortlist pulled, no waqf-stripping helper written, no
-  dual-script join built, no dataset assembled, no training run started. This
-  entire session was design/discussion only.
+- **Session 2, second half:** resolved shortlist-length skew using real meter
+  info from the user (Mu'allaqat: shatr ≈ 4-6 words, bayt ≈ 12 words) and real
+  v2 caption samples the user provided. Locked the pron-caption template as
+  positive-only (no melisma/vibrato mention at all, even negated — user's call,
+  confirmed better than my own draft: negation primes the concept in
+  gen-music models). **Task 2 prompt for the agent was fully drafted and
+  agreed but NOT yet sent** at session end (re-cut shortlist to 40, 4-12 words,
+  A/B length types; generate caption .txt pairs; audit donor bucket reciters
+  via `_catalog.json` first, exclude `warsh/` and Mujawwad dirs, dedupe
+  al-Ajamy listing). Session 3 should confirm whether it was sent and, if not,
+  send it before doing anything else.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
