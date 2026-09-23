@@ -345,6 +345,35 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   file locations. Useful as a second reference alongside this file; skim it
   too when resuming repo-mechanics questions this file doesn't cover in
   command-level detail.
+  **Tanzil script-variety question (asked and resolved, same session):** all
+  6 Tanzil script variants (uthmani, uthmani-min, simple, simple-plain,
+  simple-min, simple-clean) were already downloaded back at corpus setup
+  (`download_corpus.py`, commit `a17f833`) — confirmed download params match
+  what the user later screenshotted from tanzil.net exactly: `marks=true`
+  (pause marks), `sajdah=true`, `tatweel=true`, no `rub` param. But the
+  caption pipeline (`pron_dualscript.py`) only ever consumed 2 of the 6:
+  full `uthmani` + full `simple`. **Decided to keep it at 2, not expand** —
+  the other 4 are all diacritic-reduced variants of one or the other
+  (`simple-clean` is skeleton-only, no vowels at all), and diacritics are
+  exactly the signal a pronunciation adapter needs, so adding them would
+  work against the goal, not add useful variety. Don't re-raise this as an
+  open gap unless the reasoning above changes.
+  **Session ended with Task 5 in flight (dataset build, not yet verified):**
+  full prompt sent to the agent, same branch, covers: rebuild the shortlist
+  at 350 (`--type-a-count 219 --type-b-count 131`); **re-run
+  `audio_audit.py` against the NEW 350-key shortlist** (old coverage check
+  only ever verified the 9 reciters against the original 40 — this was
+  flagged explicitly, not assumed); redo dual-script join + 700 captions;
+  download all 3,150 mp3s (9 reciters × 350 ayat, NOT committed to git —
+  told the agent to report back where it actually lands); full-corpus
+  ffprobe (not a sample this time) into a committed
+  `data/pron/donor_audio_manifest.json`. **Next session: verify from commits
+  first, same as every prior gap** — check `git log` on `pron-lora-prep` for
+  new commits past `369a299` before trusting any chat-report prose, and
+  specifically check whether Step 2's coverage re-check found any reciter
+  short of full coverage on the new 350 (the prompt told the agent to stop
+  and report rather than silently drop ayat/reciters if so — confirm that
+  didn't happen quietly).
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -373,12 +402,12 @@ reasoning to produce? If yes, write the agent a prompt instead.
 2. ~~Pick final reciters~~ — done, session 5: 9 reciters, user's own pick.
    ~~Dataset scale~~ — done, session 5: 350 ayat, dual-script. See "Session 5
    result" above.
-3. **Not yet sent — do this next:** agent task to rebuild the 350-ayat
-   shortlist for real (command trialed locally, just needs committing),
-   redo dual-script join + 700 caption files, then download the 3,150 mp3s
-   (9 reciters × 350 ayat) to wherever the actual training run will read
-   from. This is the first genuinely large download in the project — sanity
-   check available disk/bucket egress before firing it off.
+3. **In flight (Task 5 sent, not yet verified)** — agent is rebuilding the
+   350-ayat shortlist, re-checking reciter coverage at 350, redoing the
+   dual-script join + 700 captions, downloading 3,150 mp3s, and running a
+   full-corpus ffprobe into `donor_audio_manifest.json`. Verify from commits
+   on `pron-lora-prep` (past `369a299`) before trusting chat prose — see
+   "Session 5 result" above for exactly what to check first.
 4. Build the merge tool with the alpha=0 bit-for-bit invariant test (main
    repo, `maqamrock-yue2-lora-finetuning` — not touched yet this project).
    Independent of the above, can happen in parallel.
