@@ -80,6 +80,28 @@ further maqamrock training would even be about pronunciation, or just style.
   text (audio/text mismatch; verse numbering may differ too). Exclude both
   Mujawwad dirs. Bucket has `_catalog.json`, `_metadata/`, `_registry/`: read
   them before classifying reciters by folder name alone.
+- **Final reciter set — 9, user's own pick (session 5), committed directly to
+  `reciters_shortlist/shortlist.txt` on the secondary repo's `main` branch**:
+  `Husary_128kbps` (note: standard Husary, **not** the earlier-flagged
+  `Husary_Muallim`), `Abdul_Basit_Murattal_192kbps`,
+  `Abu_Bakr_Ash-Shaatree_128kbps`, `Minshawy_Murattal_128kbps`,
+  `Hudhaify_128kbps`, `Muhammad_Ayyoub_128kbps`, `Yaser_Salamah_128kbps`,
+  `aziz_alili_128kbps`, `Abdullah_Basfar_192kbps`. Verified directly against
+  `reciter_audit.json`: all Murattal, none excluded, none duplicates, all had
+  full coverage of the (then-)40-ayah shortlist. Caveat worth keeping: 7/9 are
+  classified via the common-knowledge fallback, not a hard bucket field — only
+  Abdul_Basit_Murattal and Minshawy_Murattal matched on name-keyword. Going to
+  9 (not the originally-discussed 2-3) is a deliberate go-wide choice — a
+  different bet than the original "avoid single-voice memorization" reasoning,
+  trading more download/storage for more voice diversity.
+- **Real pacing data (session 5, agent Task 4, commit `369a299`, secondary
+  repo)**: ffprobe'd a fixed random sample (seed=42; 3 type-A + 3 type-B ayat
+  × all 9 reciters = 54 files; audio deleted after probing, only JSON numbers
+  committed — verified directly, no mp3s in the diff). Pooled: type A mean
+  9.81s, type B mean 12.27s, overall 11.04s. `Husary_128kbps` is a real pacing
+  outlier — ~15-17s/ayah, 40-75% slower than the other 8 reciters (9.0-11.4s
+  band). Confirms the session-4 teaching-style-vs-standard pacing gap, now
+  measured on the actual 9 picked reciters.
 - Available donor data: GCS bucket
   `gs://sheikh-fitzgerald-backup/ARABIC_DATA/QURAN_VERSE_BY_VERSE_RECITATIONS_DATASETS/`,
   per-verse files named `SSSAAA.mp3` (surah+ayah), many reciters, both
@@ -201,9 +223,11 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
 
 ## Explicitly open / not yet decided
 
-- **Dataset scale** — user deferred this ("want to think it through first").
-  My proposal (small pilot, ~10-20 ayat × 2-3 reciters, scale only if
-  non-regressive improvement shows) is a suggestion, not yet agreed.
+- ~~**Dataset scale**~~ — resolved session 5: **350 ayat, dual-script, 9
+  reciters.** See "Session 5 result" below. (My original ~10-20-ayat pilot
+  proposal was superseded, not followed — worth remembering next time a
+  "small pilot" instinct gets proposed here without re-checking it against
+  what's actually cheap to get.)
 - **Session 2 result:** next-steps 1–3 done by the agent on secondary-repo branch
   `pron-lora-prep` (commit `aebaf26`, unmerged, 71 tests pass): weighted config,
   60-ayah shortlist, `strip_pause_marks()`, dual-script JSONL (60/60 matched,
@@ -277,6 +301,50 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   numbers "in the reply" — the prompt template should require committing any
   requested numbers/analysis into a small file, the way Gap 2's fix finally
   did, even for read-only/analysis asks.
+  **Session 4 end (cut off by max-token, not recorded until session 5):**
+  user declined to commit to reciters yet ("want to think about reciter
+  choice more"). Pivoted to dataset scale (open since session 1) — reframed
+  it as two separate smaller levers (reciter count; whether to run a
+  throwaway pipeline-shakedown slice before the full run) rather than one big
+  "how much" question, since the 40-ayah shortlist itself was sunk cost
+  either way. Session ended on an unanswered clarifying question about what
+  was actually driving the scale hesitation. See "Session 5 result" for how
+  this actually resolved (differently — user reopened the 40-ayat number
+  itself, which the session-4 framing had assumed was fixed).
+- **Session 5 result:** picked up the dangling thread directly. Two real
+  decisions landed:
+  1. **Reciters: 9**, user's own pick, done outside any agent task — see the
+     new entry under "Data/methodology decisions" above for the list and
+     verification. Session 4's "2-3 reciters" framing didn't hold; the user
+     went wider instead of narrower.
+  2. **Ayat count: 350** (up from 40), full dual-script pairing kept. This
+     reopened an assumption session 4 had treated as settled — the 40-ayah
+     count was never a principled limit, just leftover from an early
+     "small pilot" instinct (`pron_shortlist_v2.py`'s `--type-a-count
+     25 --type-b-count 15` are CLI defaults, not a hard cap) plus the
+     letter-coverage floor mechanics. The actual scored pool is 2,911 ayat
+     (1,184 type-A / 1,727 type-B candidates in the 4-12 word band), so 350
+     is well inside it. **Trial-run only, not yet committed**: rescoring at
+     `--type-a-count 219 --type-b-count 131` (350 total, same 62.5/37.5 A/B
+     ratio as before) selects cleanly with `method: density-within-type` —
+     no coverage-floor fallback needed. Letter coverage: ح 166, خ 113, ع 277,
+     ض 86, all comfortably above the floor of 12.
+  Using the real per-reciter pacing data (not an estimate): **350 ayat × 9
+  reciters ≈ 9.4 hours of donor audio** (3,150 unique mp3s), **6,300 training
+  pairs** after dual-script join (dual-script doubles pairs, not audio hours
+  — same file, two captions). For scale sense: MaqamRock's own corpus is
+  18h50m/267 tracks: 350×9 lands at roughly half that, from what is still a
+  cheap download, not a training-compute concern.
+  **Not yet done:** the 350-ayat shortlist is a local trial run, not
+  committed to the repo. Next actual step is an agent task (not yet sent) to
+  rebuild the shortlist at this scale for real, redo the dual-script join and
+  captions (700 `.txt` files at 350×2), and download the 3,150 mp3s.
+  **Also found this session:** the secondary repo carries its own
+  `PROGRESS_pron_lora_prep.md` (agent-written, commit `15e3559`, on
+  `pron-lora-prep`) — a reproduce-from-scratch doc with exact commands and
+  file locations. Useful as a second reference alongside this file; skim it
+  too when resuming repo-mechanics questions this file doesn't cover in
+  command-level detail.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -302,11 +370,18 @@ reasoning to produce? If yes, write the agent a prompt instead.
 
 1. ~~Resolve the two session-3 gaps~~ — done, session 4 (commits `816628b`,
    `852c6fe`). See "Session 4 result" above.
-2. Pick final reciters (2-3, not 1, per the earlier generalization decision)
-   from the full-coverage list and download the 40-ayah audio sets.
-3. Build the merge tool with the alpha=0 bit-for-bit invariant test.
-4. Dataset scale is still undecided (user deferred it, session 1) — revisit
-   before assembling the actual training set.
+2. ~~Pick final reciters~~ — done, session 5: 9 reciters, user's own pick.
+   ~~Dataset scale~~ — done, session 5: 350 ayat, dual-script. See "Session 5
+   result" above.
+3. **Not yet sent — do this next:** agent task to rebuild the 350-ayat
+   shortlist for real (command trialed locally, just needs committing),
+   redo dual-script join + 700 caption files, then download the 3,150 mp3s
+   (9 reciters × 350 ayat) to wherever the actual training run will read
+   from. This is the first genuinely large download in the project — sanity
+   check available disk/bucket egress before firing it off.
+4. Build the merge tool with the alpha=0 bit-for-bit invariant test (main
+   repo, `maqamrock-yue2-lora-finetuning` — not touched yet this project).
+   Independent of the above, can happen in parallel.
 5. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
    letter-substitution scorecard.
 
