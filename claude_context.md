@@ -615,6 +615,36 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     (merge tool) not yet written; open design questions are listed at the end of that log
     (rank 32 vs 8 cannot be summed as raw A/B; base is int8-quantized, so a LoRA-file-level merge is
     likely; define "bit-for-bit" precisely; check how v2 reaches audio.cpp inference first).
+- **Session 9 result (L4 smoke PASSED, A100 real run completed):**
+  - Task 14b (L4): PASS. `text_encoders.*` 224 keys, `diffusion_model.*` 0, all ranks 8, all losses
+    finite. Commit `258a098`. One preflight catch worth remembering: `GCP_DATASET_PATH` and
+    `GCP_PRON_DATASET_PATH` got crossed on the VM (pron data landed under `/content/yue2_dataset`
+    instead of `/content/pron_dataset`); agent caught it before training, re-pulled correctly. Cause
+    was a user env-export mixup, not a script bug — **re-check both exports on every fresh VM**.
+  - Task 14c (A100): preflight PASS (`1100c84`), then 6,100-step real run completed cleanly. No
+    tracebacks, no OOM, VRAM flat ~10.5 GB. `loss/ar_ce` (the only term this AR-only adapter
+    actually optimizes) fell steadily 5.20→4.40 (500-step window means); `loss/ar_kl` rose
+    monotonically but bounded (max 2.19), same shape as v1/v2 — not a blow-up, but the lever to pull
+    (`ar_kl_weight` / fewer steps / lower LR) if offline eval later shows AR over-drift. Diminishing
+    returns after step ~1500 (per-500-step gains dropped from −0.41 to low single digits). 4
+    checkpoints (1525/3050/4575/6100) + 1 final file, all local + GCS. Analysis:
+    `TRAINING_ANALYSIS/pron_lora_ar_only_r8/ANALYSIS.md`.
+  - **Real bug found mid-run, fixed live:** `backup_to_gcp.py`'s `wait_for_settle` never excluded the
+    TensorBoard event file, which is rewritten every step (`log_every: 1`) — so the settle check
+    never completed and NO checkpoint reached GCS for ~1 h, even though logs/agent_notes looked
+    synced (false confidence). Fixed by adding `tensorboard/` and `events.out.tfevents*` to
+    `SETTLE_IGNORE_NAMES` (commit `5d76d89`). **Generalizable gotcha:** any settle/sync watcher on a
+    training output folder must exclude continuously-rewritten log files, or it will starve on them.
+  - **A100 was overkill for this job.** Median GPU util 22%, VRAM only 10.5/80 GB, step time 0.886 s
+    — barely faster than the L4 smoke's ~1.0 s/step (itself warmup-inflated). This run is
+    data/CPU-bound (short-clip audio/VAE path), not compute-bound. **Guardrail for future short-clip
+    jobs on this dataset shape: default to L4, not A100** — the A100's throughput advantage only
+    showed up for v1/v2's whole-song clips (`docs/GPU_L4_VS_A100.md`), not these short recitation
+    pairs. Don't assume that number transfers to a different clip length/dataset without remeasuring.
+  - **Next:** offline AR-loss replay over the 180 `val` pairs per checkpoint (`PRON_LORA_VERIFICATION.md`
+    A3) — loss curves alone don't tell us if pronunciation improved (`disable_sampling: true`, no
+    validation split during training). Then Task 15 (merge tool, open questions still unresolved,
+    see session 8 bullet above).
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -663,16 +693,17 @@ relitigate after they've chosen.
    See "Session 7 result".
 4. ~~Draft assembly + training-config specs~~ — done, session 8 (Tasks 13, 14; see "Session 8
    result"). Dataset built and uploaded; configs and persistence on `pron-lora-ar-only`.
-5. **Start session 9 here:** get the L4 smoke verdict (Task 14b: keys `text_encoders.*` > 0,
-   `diffusion_model.*` == 0, rank 8, finite losses) and whether the A100 run (Task 14c, real
-   6,100-step run, quarter-epoch checkpoints) has started/finished. If the smoke FAILED, diagnose
-   from `docs/PRON_LORA_VERIFICATION.md` on the branch before anything else. Both prompts are in
-   `session_logs/SESSION_08.md`.
-6. Write **Task 15, the merge tool** (main repo, branch `pron-lora-ar-only`; independent of
-   training, CPU-only, can be sent while the A100 run trains). Settle the design questions at the
-   end of `SESSION_08.md` first; test `alpha = 0` reproduces v2 with a precisely defined invariant.
-   Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are additive with v2's AR part.
-7. Only then: alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using the 0.25/0.5/0.75/1.0-epoch
+5. ~~L4 smoke + A100 real run~~ — done, session 9 (Tasks 14b/14c). Smoke PASS (`258a098`); 6,100-step
+   real run completed cleanly, 4 checkpoints + final in local + GCS. See "Session 9 result" above for
+   the loss trend, the backup-daemon settle bug (fixed), and the A100-overkill finding.
+6. **Start session 10 here:** offline AR-loss replay over the 180 `val` pairs per checkpoint
+   (`PRON_LORA_VERIFICATION.md` A3) — loss curves alone don't establish whether pronunciation
+   actually improved.
+7. Write **Task 15, the merge tool** (main repo, branch `pron-lora-ar-only`; CPU-only). Settle the
+   design questions at the end of `SESSION_08.md` first; test `alpha = 0` reproduces v2 with a
+   precisely defined invariant. Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are
+   additive with v2's AR part.
+8. Only then: alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using the 0.25/0.5/0.75/1.0-epoch
    checkpoints (stopping rule), plus the letter-substitution scorecard; listen for recitation-cadence
    bleed (stretched vowels, wrap-up-early).
 
