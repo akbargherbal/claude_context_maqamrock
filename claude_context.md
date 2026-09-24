@@ -462,10 +462,20 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     future finding turns out concentrated/large (e.g. a whole reciter
     turning out systematically bad), not for the current scattered findings.
   - **Still open, not yet decided**: what to do with the 19 silence-flagged
-    files (pending a listen) and the 312 loudness-flagged files (pending
-    more scrutiny of whether they're real problems or normal variation);
-    whether/how to fold `training_pair_exclusions.json` into whatever
-    eventually assembles real training pairs.
+    files and the 312 loudness-flagged files; whether/how to fold
+    `training_pair_exclusions.json` into whatever eventually assembles real
+    training pairs. **Resolution mechanism decided at session close: human
+    listening, not further automated analysis.** Task 9 sent (not yet
+    confirmed complete/committed as of session end) asking the agent to zip,
+    at `/content/human_review.zip`, the original/untouched audio for: all 19
+    `silence_long_gap` files, plus a seed=42 proportional sample (~30 files,
+    capped ~4/reciter) of the 312 `loudness_outlier` files, each with a
+    `MANIFEST.txt` line stating exactly what to listen for (gap
+    duration+position, or dB deviation from that reciter's own median) so
+    the reviewer doesn't have to cross-reference the JSON by hand. **Next
+    session starts with the user relaying their listening results** — treat
+    that as the actual decision input for exclude/keep on both lists, not
+    something to re-derive from the numbers alone.
   - **Also touched this session (read-only)**: cloned
     `maqamrock-yue2-lora-finetuning` (main repo, still untouched — only
     `main` branch, nothing built yet) and skimmed
@@ -513,14 +523,16 @@ reasoning to produce? If yes, write the agent a prompt instead.
    commits `df963c7`/`fa56df8`/`dcec1a5`). Integrity independently verified
    (3150/3150 MD5-match GCS), bandwidth check retired as non-discriminative,
    2 files confirmed corrupt at the source, policy locked to flag-only/never
-   auto-edit. See "Session 6 result" above for full detail. **Open, do this
-   next:** three pending decisions before this is truly closed out — (a)
-   listen to the 19 silence-flagged files (mostly `Husary_128kbps`) and
-   decide exclude/keep, (b) decide whether the 312 loudness-flagged files
-   need any action or are normal performance variation (current read: latter,
-   needs more scrutiny either way), (c) fold whatever's decided into an
+   auto-edit. See "Session 6 result" above for full detail. **Start session 7
+   here:** Task 9 (zip flagged audio for human listening review, sent at
+   session-6 close, completion not yet confirmed) should have produced
+   `/content/human_review.zip` — check the agent's repo commit for confirmation
+   it ran, then the user will relay what they heard for the 19 silence-flagged
+   and ~30 sampled loudness-flagged files. That listening result is the actual
+   decision input for exclude/keep on both lists — don't re-derive a decision
+   from the report numbers alone. Once resolved, fold the outcome into an
    actual training-pairs manifest (currently only the 2 corrupt-file
-   exclusions are recorded).
+   exclusions from Task 7 are recorded there).
 4. **Do this next, after the above closes out:** build the merge tool with
    the alpha=0 bit-for-bit invariant test (main repo,
    `maqamrock-yue2-lora-finetuning`, new branch off `main` — not `main`
