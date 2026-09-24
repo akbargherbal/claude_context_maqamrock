@@ -785,6 +785,25 @@ tested, and documented — see "Session 10 result" below and
     that daemon likely was never started. Don't assume it survived — verify or re-request it fresh at the
     start of the GPU session rather than relying on a carryover that was never confirmed pushed anywhere.
 
+- **Session 12 result (offline AR-loss sweep DONE on L4; checkpoint choice still open):**
+  - Ran on a fresh Colab L4. **Only 4 trainable checkpoints exist** (1525/3050/4575/`final`=6100), so the full
+    sweep is 180 val pairs x 4 = **720 passes** (the "900 / 5 checkpoints" in session 11 + `PRON_LORA_VERIFICATION.md`
+    §A3b was wrong; agent fixed the doc). Agent commit `8f6c57e` (`results/*.json`, branch `pron-lora-ar-only`).
+  - **Kernel-engages prediction confirmed:** 0.61 s/item on L4 vs 272.79 s/item on CPU (~450x, qualitative not
+    proportional); no W8A16-fallback warning in the sweep log. Whole sweep ~23 min, zero errors. Verified from the raw
+    JSONs (n_items=180, device=cuda), not just commit prose.
+  - **Mean losses (180 val pairs):** 1525: ar_ce 5.1157 / ar_kl 0.7180; 3050: 4.6202 / 1.2715; 4575: 4.5053 / 1.4241;
+    final: 4.4507 / 1.4828. ar_ce gains: -0.50 (1525->3050), then only -0.11, -0.05; ar_kl rises the whole way.
+    So **3050 or 4575 may be a better pronunciation/drift trade than `final`** — but ar_ce on val is NOT a
+    pronunciation measure by itself; only the held-out-lyrics alpha sweep + ear-check can decide.
+  - Preflight note: `backup_to_gcp.py`/`gpu_logger.py` were NOT running when the agent checked; it started them.
+    Check manually before any job that writes files worth keeping.
+  - **Session 12 ended prematurely (max session tokens) right after this result** — the log
+    (`session_logs/SESSION_12.json`) ends on Claude asking which checkpoint x alpha grid to try. Not answered.
+  - **Watch-item for the next step:** `docs/INFERENCE.md` says the prebuilt `audiocpp_cli` in GCS is **sm_75 (T4)**;
+    L4 is sm_89 -> may need the per-arch build in `docs/audiocpp_gpu_arch_builds.md` (or a prebuilt sm_89 binary
+    already in GCS — check first). Don't assume the T4 binary runs/performs right on L4.
+
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
 This is a WebUI session — context window is a real bottleneck, and the user
@@ -849,17 +868,13 @@ relitigate after they've chosen.
    just slow). See "Session 11 result" above. Also done, session 11: Task 15's alpha=0
    no-regression invariant re-verified live, PASS (Task 16A, commit `c02e37d`) — no longer an
    open trust item.
-9. **Start session 12 here, switch to L4** (not A100 — session 9 found this workload
-   data/CPU-bound, L4 gets ~equal throughput for less CU/h; session 11's CPU numbers make this
-   step load-bearing, not optional). First re-run the offline AR-loss replay's full 900-pass
-   sweep on L4 (should be genuinely faster, not just proportionally, since the int8 kernel can
-   actually run there — state this explicitly in the prompt, the agent has not been told this
-   reasoning yet). Then: the merge, and the alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics
-   using checkpoint × alpha combinations (stopping rule), plus the letter-substitution scorecard;
-   listen for recitation-cadence bleed (stretched vowels, wrap-up-early). Before starting, confirm
-   `git checkout pron-lora-ar-only` + both `GCP_DATASET_PATH`/`GCP_PRON_DATASET_PATH` exports are
-   in whatever notebook launches the VM (session 11 caught both missing from a new personal
-   notebook) and don't assume `agent_notes/current.md` carried over from session 11 (see above).
+9. ~~Offline AR-loss replay sweep on L4~~ — done, session 12 (commit `8f6c57e`); see "Session 12 result".
+10. **Start session 13 here (L4, not A100).** Merge (`merge_pron_lora.py`) at chosen checkpoint x alpha, generate the
+    4 held-out songs (`INFERENCE/yue2_eval_heldout/`) per config via `INFERENCE/run_one.sh`/`generate.py`, always
+    including alpha=0 (= v2) as the baseline, same seed. Then the letter-substitution scorecard (method not yet designed —
+    sung-vocal ASR is noisy; the user's ear is the primary judge) and listen for recitation-cadence bleed (stretched
+    vowels, wrap-up-early). Preflight: `git checkout pron-lora-ar-only`, all 3 GCP env exports, sidecars running,
+    audiocpp_cli arch (see session 12 watch-item).
 
 ## Maintaining this file
 
