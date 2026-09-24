@@ -465,8 +465,8 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     files and the 312 loudness-flagged files; whether/how to fold
     `training_pair_exclusions.json` into whatever eventually assembles real
     training pairs. **Resolution mechanism decided at session close: human
-    listening, not further automated analysis.** Task 9 sent (not yet
-    confirmed complete/committed as of session end) asking the agent to zip,
+    listening, not further automated analysis.** Task 9 sent (confirmed complete in
+    session 7, commit `6a20446`) asking the agent to zip,
     at `/content/human_review.zip`, the original/untouched audio for: all 19
     `silence_long_gap` files, plus a seed=42 proportional sample (~30 files,
     capped ~4/reciter) of the 312 `loudness_outlier` files, each with a
@@ -488,6 +488,41 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     sequencing call: do the merge tool *after* the dataset is fully settled,
     on a new branch (not `main`) on that repo, same pattern as the secondary
     repo's `pron-lora-prep`.
+
+- **Session 7 result (gatekeeping pass CLOSED, dataset final):**
+  - Task 9 confirmed complete (agent commit `6a20446`; the commit message
+    carried the full report this time). `/content/human_review.zip` was built
+    (49 audio + MANIFEST, all byte-identical to source) and lives on the
+    agent's box, not in git.
+  - **User listened; decisions final:** loudness-flagged files (312) all
+    acceptable, **keep all**. Silence-flagged files (19) **keep all** (no
+    editing/trimming, per the session-6 policy). The 2 corrupt files
+    (`Hudhaify_128kbps/023005`, `aziz_alili_128kbps/086008`) play fine in a
+    normal media player, but they still fail libsndfile. Initially left
+    excluded, later reversed (see below). **Task 10 decode check was then run after all** (agent commit `3f493ff`,
+    `data/pron/corrupt_file_decode_check.json`): both files decode fully and
+    identically under ffmpeg, torchaudio and librosa (same frame counts, within
+    0.14% of ffprobe duration); **only libsndfile fails**. MD5s unchanged.
+    The training loader is documented (main repo `verification.md:22,27`) as
+    using torchaudio; caveat: ai-toolkit's loader code isn't in either repo, so
+    that is from docs, not a verified line. **User called the exclusion a false
+    positive; reinstated (Task 11, agent commit `1773dda`, verified from the
+    diff):** `training_pair_exclusions.json` is now `[]` (file kept), both mp3s
+    present, MD5s match, torchaudio.load ok. **Final state: 350 ayat x 9
+    reciters = 3,150 files = 6,300 dual-script pairs, 0 exclusions.** 445 tests
+    pass. Lesson: a libsndfile-only failure is not evidence of a bad file; check
+    the decoder the training loader actually uses before excluding anything.
+  - **Guardrail restated by the user twice this session (same one as the
+    goal section):** this is crisp-pronunciation training, not performance
+    training. Corollary for data quality: the only valid exclusion criteria
+    are defects that damage the consonant signal (corrupt/truncated audio,
+    audio/text mismatch). Loudness dynamics and pause length are performance
+    traits and are **not** exclusion grounds. Don't propose new quality
+    checks that measure performance.
+  - **Text/audio match check declined by the user:** proposed a duration-per-
+    word outlier check (catching basmala prepended on ayah-1 clips,
+    truncation), and the user said no. Their own random sampling of ayat
+    never turned up wrong text, and that is enough for them. Don't re-raise.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -518,22 +553,15 @@ reasoning to produce? If yes, write the agent a prompt instead.
    result" above.
 3. ~~Dataset build~~ — done and verified, session 5 (Task 5, agent commits
    `8cac7a6`, `8c8c9a1`). 350 ayat × 9 reciters, 700 captions, 3,150 mp3s,
-   8.31 hrs audio, 6,300 training pairs.
+   8.31 hrs audio, 6,300 training pairs (still 6,300 after gatekeeping, no exclusions).
    ~~Broader low-quality gatekeeping pass~~ — done, session 6 (Tasks 6-8,
    commits `df963c7`/`fa56df8`/`dcec1a5`). Integrity independently verified
    (3150/3150 MD5-match GCS), bandwidth check retired as non-discriminative,
    2 files confirmed corrupt at the source, policy locked to flag-only/never
-   auto-edit. See "Session 6 result" above for full detail. **Start session 7
-   here:** Task 9 (zip flagged audio for human listening review, sent at
-   session-6 close, completion not yet confirmed) should have produced
-   `/content/human_review.zip` — check the agent's repo commit for confirmation
-   it ran, then the user will relay what they heard for the 19 silence-flagged
-   and ~30 sampled loudness-flagged files. That listening result is the actual
-   decision input for exclude/keep on both lists — don't re-derive a decision
-   from the report numbers alone. Once resolved, fold the outcome into an
-   actual training-pairs manifest (currently only the 2 corrupt-file
-   exclusions from Task 7 are recorded there).
-4. **Do this next, after the above closes out:** build the merge tool with
+   auto-edit. See "Session 6 result" above for full detail. Task 9 review done, session 7: all flagged
+   files kept, and the 2 "corrupt" files reinstated as false positives. **Gatekeeping is closed; dataset is final (0 exclusions).**
+   See "Session 7 result".
+4. **Start session 8 here:** build the merge tool with
    the alpha=0 bit-for-bit invariant test (main repo,
    `maqamrock-yue2-lora-finetuning`, new branch off `main` — not `main`
    itself). Independent of the dataset work, nothing blocking it. Merge
