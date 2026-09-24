@@ -740,6 +740,51 @@ tested, and documented — see "Session 10 result" below and
     double-check env vars. Worth double-checking this exact string again if it's ever retyped
     by hand rather than copied.
 
+- **Session 11 result (Task 16 done in full: merge invariant re-verified live PASS; AR-loss replay script built + CPU-benchmarked, sweep deliberately NOT run):**
+  - CPU-only session, using a new personal VS Code-anywhere/opencode(DeepSeek) workflow notebook instead of a
+    Claude-run terminal — same underlying repo/branch, different way of relaying commands to the agent.
+    **Notebook gotcha caught before use, worth re-checking if this notebook is reused:** it cloned the main
+    repo but never ran `git checkout pron-lora-ar-only`, and never exported `GCP_PRON_DATASET_PATH` — both
+    are silent-failure risks (stays on `main`, or `/content/pron_dataset` never restores) that were only
+    caught by inspection this session, not by the notebook itself.
+  - **Task 16A — the one untrusted claim from session 10 is now independently confirmed, live, PASS.**
+    Re-ran `pytest tests/test_merge_pron_lora.py -v -s` on a fresh VM with real v2+pron `.safetensors` staged
+    from GCS: all 12 tests ran (none skipped this time), including
+    `test_alpha_zero_reproduces_live_converted_v2`. Both hashes matched the doc's table exactly: converted AR
+    `747d5cfe…`, converted NAR `ad2c8d86…`. **The no-regression invariant the whole two-LoRA merge design
+    depends on is now verified, not just agent-reported.** Commit `c02e37d`.
+  - **Task 16B — `offline_ar_loss_replay.py` built** (reuses the real per-item AR forward/loss path,
+    `yue2_model.py`'s `_prefix_segment`/`_item_prefix_and_abc`/`_ar_inputs`/`_ar_losses`; forward-only, no
+    trainer/backward/optimizer/NAR flow). 9 new tests. Commit `b087bac`.
+  - **Real, load-bearing finding: CPU has no `torch._int_mm` kernel**, so the int8-quantized base checkpoint
+    can't run quantized math on CPU — it silently falls back to dequantized bf16 (W8A16) matmuls. Output is
+    numerically correct, but there is **no speedup from quantization on CPU**, which is most of why one
+    forward pass is so heavy. This is a hardware-capability gap, not a tuning problem — it doesn't shrink
+    with a bigger/faster CPU box, only with a CUDA GPU (L4 or better) where the kernel actually engages.
+  - **8-item CPU benchmark (final checkpoint), verbatim numbers, committed:** mean `loss/ar_ce = 4.0652`,
+    `loss/ar_kl = 1.3636` — plausible next to the training-time final-checkpoint figures (`ar_ce` ~4.16-4.40,
+    `ar_kl` ~1.53), no red flags. Per-item: tokenize 3.70s + AR-loss forward 272.79s = **276.49s/item**
+    (model load 72.6s, one-time, not per-item).
+  - **Extrapolation for the full sweep (180 val pairs × 5 checkpoints = 900 forward passes): ≈68.2 hours
+    on this CPU box** (272.79s × 900 = 245,511s), plus ~0.9h of (cacheable) tokenization. Recorded in
+    `docs/PRON_LORA_VERIFICATION.md` §A3b.
+  - **Script correctly stopped exactly where instructed:** no 900-pass sweep, no checkpoint comparison, no
+    pronunciation-quality conclusion drawn — commit message explicitly hands the CPU-vs-GPU call back to the
+    user. It reported the `torch._int_mm` fact but did **not** itself draw the inference that GPU should give
+    a *qualitative* (kernel-engages) speedup rather than just a proportional one from more cores — that
+    reasoning happened in this WebUI session, not in the agent's own output, and needs to be stated explicitly
+    in whatever prompt is written for the GPU/L4 step rather than assumed already known to the agent.
+  - **Given the ~68h number, CPU is not a realistic option for the full sweep — this settles item 9 below
+    as effectively mandatory, not just "probably faster on GPU."** Still L4, not A100 (unchanged reasoning
+    from session 9: this workload is data/CPU-bound, not compute-bound).
+  - **`PROGRESS.md` was not updated with a Task 16 milestone entry this session** (the detail lives in
+    `docs/PRON_LORA_VERIFICATION.md` §A3b and the two commit messages instead, both git-preserved and
+    sufficient) — worth a one-line PROGRESS.md entry next session if it's ever missed when skimming history.
+  - **`agent_notes/current.md` is git-ignored by design** (see AGENTS.md) and only reaches GCS if
+    `backup_to_gcp.py`'s daemon is running; this was a script-dev/benchmark session with no training job, so
+    that daemon likely was never started. Don't assume it survived — verify or re-request it fresh at the
+    start of the GPU session rather than relying on a carryover that was never confirmed pushed anywhere.
+
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
 This is a WebUI session — context window is a real bottleneck, and the user
@@ -798,16 +843,23 @@ relitigate after they've chosen.
    12 unit tests (11 run + verified passing this session; 1 real end-to-end test
    skips without the live GCS artifacts — see "Session 10 result" for the one
    thing still worth watching run live before fully trusting it).
-8. **Start session 11 here, still CPU-only:** write the offline AR-loss replay script over the
-   180 `val` pairs per checkpoint (`PRON_LORA_VERIFICATION.md` A3) — loss curves alone don't
-   establish whether pronunciation actually improved. Before running the full 900 forward
-   passes (180 pairs × 5 checkpoints) on any CPU box, benchmark a small slice (5-10 pairs,
-   1 checkpoint) first and extrapolate — don't assume it's cheap or expensive, measure it.
-9. **Only once 8 is done, switch to L4** (not A100 — session 9 found this workload
-   data/CPU-bound, L4 gets ~equal throughput for less CU/h) to actually run: the val-loss replay,
-   the merge, and the alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using checkpoint × alpha
-   combinations (stopping rule), plus the letter-substitution scorecard; listen for
-   recitation-cadence bleed (stretched vowels, wrap-up-early).
+8. ~~Write + CPU-benchmark the offline AR-loss replay script~~ — done, session 11 (Task 16B,
+   commit `b087bac`). CPU benchmark: ~68.2h extrapolated for the full 900-pass sweep — CPU
+   confirmed **not viable** for the full run (no `torch._int_mm` on CPU, dequant fallback, not
+   just slow). See "Session 11 result" above. Also done, session 11: Task 15's alpha=0
+   no-regression invariant re-verified live, PASS (Task 16A, commit `c02e37d`) — no longer an
+   open trust item.
+9. **Start session 12 here, switch to L4** (not A100 — session 9 found this workload
+   data/CPU-bound, L4 gets ~equal throughput for less CU/h; session 11's CPU numbers make this
+   step load-bearing, not optional). First re-run the offline AR-loss replay's full 900-pass
+   sweep on L4 (should be genuinely faster, not just proportionally, since the int8 kernel can
+   actually run there — state this explicitly in the prompt, the agent has not been told this
+   reasoning yet). Then: the merge, and the alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics
+   using checkpoint × alpha combinations (stopping rule), plus the letter-substitution scorecard;
+   listen for recitation-cadence bleed (stretched vowels, wrap-up-early). Before starting, confirm
+   `git checkout pron-lora-ar-only` + both `GCP_DATASET_PATH`/`GCP_PRON_DATASET_PATH` exports are
+   in whatever notebook launches the VM (session 11 caught both missing from a new personal
+   notebook) and don't assume `agent_notes/current.md` carried over from session 11 (see above).
 
 ## Maintaining this file
 
