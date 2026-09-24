@@ -11,6 +11,10 @@ know," not "background reading."
 **Repos** (re-clone each session — container state doesn't persist):
 - Main: `https://github.com/akbargherbal/maqamrock-yue2-lora-finetuning.git`
 - Secondary: `https://github.com/akbargherbal/arabic-phoneme-difficulty-quran.git`
+- **Branches (session 8):** secondary repo work is on `pron-lora-prep`; main repo pron-LoRA work
+  (configs, runbook, setup.sh/backup changes, later the merge tool) is on **`pron-lora-ar-only`**
+  (off `main`; never commit pron work to `main`). Prompt history: `session_logs/SESSION_08.md`
+  holds the exact Task 13/14/14b/14c prompts (sent + queued).
 
 ---
 
@@ -530,8 +534,7 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   - **Final dataset state (after Tasks 11-12): 3,140 files (Abu_Bakr 340
     ayat, other 8 reciters 350) = 6,280 dual-script pairs**, 10 pair-level
     exclusions, all Abu_Bakr. Each excluded take drops both script variants.
-  - **Assembly design agreed in principle, not yet built** (user hasn't
-    confirmed the two proposals marked *): flat folder of `.mp3` + same-stem
+  - **Assembly design agreed in principle, not yet built** (the two starred proposals were confirmed in session 8): flat folder of `.mp3` + same-stem
     `.txt` (`caption_ext: txt`), one stem per `<reciter>_<key>_<script>`, audio
     copied not symlinked; pron config must blank `trigger_word`
     (v2's `arabmaqamrock` would otherwise be prepended to every caption) and set
@@ -553,6 +556,66 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     truncation), and the user said no. Their own random sampling of ayat
     never turned up wrong text, and that is enough for them. Don't re-raise.
 
+- **Session 8 result (dataset assembled, pron LoRA config + persistence done; smoke test pending):**
+  - **Confirmed by the user:** epoch-based step count; ayah-level ~10-ayat hold-out. Claude's three
+    further proposals were not objected to and are baked into the configs (user's call to change):
+    **rank 8** (linear/alpha 8/8), **1 epoch first with quarter-epoch checkpoints** (so the alpha
+    sweep doubles as the stopping rule), **in-training sampling off** (eval = merged alpha sweep).
+    Note: 1 epoch = 18 exposures per ayah text (9 reciters x 2 scripts); not a "light" run.
+  - **Task 13 done, verified (secondary repo, commit `df3193d`):** 6,100 train / 180 val / 16 smoke
+    pairs. Hold-out (seed 42): type A 007078, 020005, 030017, 037061, 069046, 079025; type B 006042,
+    007052, 012039, 043067; covers all four letters (ض in only 2 held-out ayat, so val is weak for ض;
+    the real ض eval is the held-out-lyrics sweep). Unique train audio = 8.005 h (barely clears the
+    user's session-6 >=8 h floor); val 0.26 h. Claude re-verified counts, exclusions, hold-out
+    constraints and manifest MD5s vs the GCS-verified MD5s from the committed JSON; the folders
+    themselves (txt byte-identity, forbidden-substring scan) are agent-reported only.
+    Folders live at `<secondary>/data/pron/training_set/{train,val,smoke}` (gitignored), stems
+    `<reciter>_<key>_<script>`; caption text depends on (key, script) only, not reciter.
+  - **Task 14 CPU phase done (main repo, `pron-lora-ar-only`, commit `0220aa8`), verified from the
+    diff:** `config/pron_lora_ar_only.yml` = v2 config with only: name/log_dir `pron_lora_ar_only_r8`,
+    `trigger_word: ""`, rank 8/8, `ignore_if_contains: ["transformer.nar"]`, folder
+    `/content/pron_dataset/train`, steps 6100, `save_every: 1525` (checkpoints 1525/3050/4575/6100 +
+    final), `train.disable_sampling: true`, sample prompts removed. `..._smoke.yml`: folder
+    `.../smoke`, 10 steps. Also: opt-in `job_pron_dataset()` in `bootstrap/setup.sh`; a real latent
+    bug fixed in `backup_to_gcp.py` (`--run-name` used to mirror v2's local output folder under any
+    run's prefix); runbook `docs/PRON_LORA.md`; source-cited `docs/PRON_LORA_VERIFICATION.md`.
+  - **Source findings worth keeping (agent-cited, Claude spot-checked in ai-toolkit):**
+    - **Saved key names differ from training names:** on save, AR keys `transformer.ar.*` become
+      **`text_encoders.*`** and NAR keys `transformer.nar.*` become **`diffusion_model.*`**
+      (`yue2_model.py convert_lora_weights_before_save`). This corrects
+      `docs/FUTURE_PRONUNCIATION_LORA.md` ("saved keys are transformer.ar.*") and the session-6 note;
+      the smoke pass criterion is `text_encoders.*` > 0, `diffusion_model.*` == 0, rank 8 everywhere.
+    - `trigger_word: ""` prepends nothing (`prompt_utils.py` guard `trigger.strip() != ""`).
+    - `validation_config` is image-only: **no audio validation loss in ai-toolkit**. Offline val-loss
+      script proposed, not built.
+    - `ar_kl` = KL(base || lora) on AR tokens (base = network off); the flow loss sees a detached AR
+      KV cache and NAR is frozen, so the AR LoRA trains only on ar_ce + ar_kl; NAR forward still runs
+      every step (wasted compute). `content_or_style` is inert here. `conv`/`conv_alpha` have no
+      effect (yue2 targets are Linear). `steps` counts loop iterations (= optimizer steps at
+      batch 1 x accum 1). Latent cache is per dataset folder (`<folder>/_latent_cache`), no collision
+      with v2. `disable_sampling` lives under `train:`, not `sample:` (Claude's spec was wrong).
+    - `setup.sh` training mode **hard-requires `GCP_DATASET_PATH`** (v2 dataset) and always runs
+      `job_dataset`, so any GPU VM also pulls the v2 dataset in the background (harmless; left as is).
+      Agent's report skipped this (A7); Claude answered it from the script.
+  - **GCS layout:** v2 dataset `gs://akbar-december-2024-backup/OSTRIS_Arabic_Suno_Finetuning/dataset/`
+    (= `/content/yue2_dataset`); pron dataset is a SIBLING prefix `.../pron_dataset/{train,val,smoke}`
+    (never inside `dataset/`, which `job_dataset` rsyncs wholesale); run backups
+    `<base>/<run-name>/output/`, base inferred = `.../OSTRIS_Arabic_Suno_Finetuning`. **Upload done by
+    the user, counts verified: 12,200 / 360 / 32.**
+  - **Runtime plan (user's call, CU-driven; Claude had recommended one A100 VM, roughly break-even):**
+    smoke test on **L4** (1.52 CU/h), then real run on **A100** (6.77 CU/h). Smoke is a pure
+    preflight (own run name, nothing reused). Each switch wipes `/content`, so the A100 VM needs its
+    own full `setup.sh` + dataset restore. L4 smoke step-time/VRAM do NOT transfer to the A100 ETA
+    (v1/v2 whole-song: ~13.4 s/step L4 vs ~3.10 A100, `docs/GPU_L4_VS_A100.md`; short clips unmeasured).
+  - **Agent-reporting pattern held again:** the commit message carried the report, but omitted A7, the
+    upload dry-run evidence, and the fresh-VM `git checkout` step (runbook gap, patched in Task 14b).
+    Verify from the diff, as always.
+  - **Where session 8 stopped:** user starting the L4 VM to run Task 14b (L4 version, in
+    `session_logs/SESSION_08.md`); on PASS, switch to A100 and send Task 14c (same file). Task 15
+    (merge tool) not yet written; open design questions are listed at the end of that log
+    (rank 32 vs 8 cannot be summed as raw A/B; base is int8-quantized, so a LoRA-file-level merge is
+    likely; define "bit-for-bit" precisely; check how v2 reaches audio.cpp inference first).
+
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
 This is a WebUI session — context window is a real bottleneck, and the user
@@ -573,6 +636,14 @@ both me and the user. The line is roughly: would this burn a meaningful chunk
 of this session's context for something that doesn't need *this* session's
 reasoning to produce? If yes, write the agent a prompt instead.
 
+**User preferences learned session 8 (follow these):** (1) Hand over prompts as ONE complete,
+copy-pasteable block with no placeholders or "replace step X" edits. (2) Give an exact, ordered
+to-do (what to do now, when to switch runtimes, when to come back) rather than options; the user
+dislikes back-and-forth and constant context switching. If a runtime switch would wipe state,
+say what to persist first. (3) State clearly what the agent has finished vs. what only the user can
+do (runs, uploads, auth). (4) Runtime/cost trade-offs are the user's call once laid out; don't
+relitigate after they've chosen.
+
 ## Natural next steps (whenever resumed)
 
 1. ~~Resolve the two session-3 gaps~~ — done, session 4 (commits `816628b`,
@@ -590,21 +661,20 @@ reasoning to produce? If yes, write the agent a prompt instead.
    auto-edit. See "Session 6 result" above for full detail. Task 9 review done, session 7: all flagged
    files kept, and the 2 "corrupt" files reinstated as false positives. **Gatekeeping is closed; dataset is final (3,140 files / 6,280 pairs).**
    See "Session 7 result".
-4. **Start session 8 here (user explicitly deferred this at session-7
-   close):** draft the agent spec for dataset assembly + the pron training
-   config, per the "Assembly design" bullet in "Session 7 result". First
-   thing: get the user's yes/no on the two starred proposals (epoch-based step
-   count; ~10-ayat ayah-level hold-out for validation loss). Write the spec
-   for the agent to implement (don't code it here), and require results in
-   committed files/commit message. Then build the merge tool with the alpha=0
-   bit-for-bit invariant test (main repo, `maqamrock-yue2-lora-finetuning`,
-   new branch off `main` — not `main` itself); it's independent of assembly.
-   Merge mechanism and AR-only scoping already confirmed from
-   `docs/FUTURE_PRONUNCIATION_LORA.md` (session 6). Note that v2's LoRA covers
-   both AR and NAR, so the pron adapter's AR-only deltas are additive with
-   v2's, not disjoint from its AR part.
-5. Only then: small low-rank AR-only LoRA run, alpha sweep,
-   letter-substitution scorecard.
+4. ~~Draft assembly + training-config specs~~ — done, session 8 (Tasks 13, 14; see "Session 8
+   result"). Dataset built and uploaded; configs and persistence on `pron-lora-ar-only`.
+5. **Start session 9 here:** get the L4 smoke verdict (Task 14b: keys `text_encoders.*` > 0,
+   `diffusion_model.*` == 0, rank 8, finite losses) and whether the A100 run (Task 14c, real
+   6,100-step run, quarter-epoch checkpoints) has started/finished. If the smoke FAILED, diagnose
+   from `docs/PRON_LORA_VERIFICATION.md` on the branch before anything else. Both prompts are in
+   `session_logs/SESSION_08.md`.
+6. Write **Task 15, the merge tool** (main repo, branch `pron-lora-ar-only`; independent of
+   training, CPU-only, can be sent while the A100 run trains). Settle the design questions at the
+   end of `SESSION_08.md` first; test `alpha = 0` reproduces v2 with a precisely defined invariant.
+   Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are additive with v2's AR part.
+7. Only then: alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using the 0.25/0.5/0.75/1.0-epoch
+   checkpoints (stopping rule), plus the letter-substitution scorecard; listen for recitation-cadence
+   bleed (stretched vowels, wrap-up-early).
 
 ## Maintaining this file
 
