@@ -254,17 +254,19 @@ actually be tunable. Three things, not one:
    letter-substitution scorecard + an ear-check for recitation-cadence bleed
    stay in the eval plan, not skippable.
 
-**Open question this creates, to settle before/while writing Task 15:**
-whether the merge tool makes alpha a *live* multiply-at-load-time scalar, or
-whether — because v2 (rank 32) and pron (rank 8) can't have their raw A/B
-pairs summed — it's forced into rank-concatenation, meaning **each alpha
-value requires baking a separate merged file**, not a cheap runtime slider.
-This is design question (2) from `session_logs/SESSION_08.md` (line ~195),
-now sharper: it decides whether sweeping 4 alpha values × up to 5 checkpoints
-is ~20 cheap inference runs or ~20 separate merge+convert jobs. Resolve by
-reading the actual merge code path and how v2's LoRA currently reaches
-`audio.cpp` inference (`docs/INFERENCE.md`,
-`/content/converter/out/convert_aitoolkit_yue2_lora.py`) before writing Task 15.
+**Resolved, session 10:** each alpha value requires baking a separate merged
+file — not a live runtime slider. audio.cpp and ai-toolkit each load exactly
+one LoRA network per expert (`yue2.ar_lora`/`yue2.nar_lora`, one file + one
+scale each — `docs/yue2-gguf-lora-findings.md`, `DECISIONS.md`); confirmed
+still current by reading the audio.cpp GitHub repo directly session 10
+(PR #586, PR #614, releases through today) — no multi-adapter-per-stage
+support has been added. `docs/FUTURE_PRONUNCIATION_LORA.md` §3 had already
+worked this out back in September, just never cross-referenced into this
+question. Method: rank-concatenation (v2 rank 32 + pron rank 8 → rank 40),
+not dense-delta materialization; alpha folds into pron's B (the up-projection,
+the side ai-toolkit's own scale convention lands on). Fully implemented,
+tested, and documented — see "Session 10 result" below and
+`docs/PRON_LORA_MERGE.md`.
 
 ## Explicitly open / not yet decided
 
@@ -687,6 +689,57 @@ reading the actual merge code path and how v2's LoRA currently reaches
     validation split during training). Then Task 15 (merge tool, open questions still unresolved,
     see session 8 bullet above).
 
+- **Session 10 result (alpha question resolved; Task 15 written, sent, and completed):**
+  - This was a CPU-only session by design (user's call, made before any work started — matches
+    items 6-8 being CPU-only in "Natural next steps"; no Colab/GPU touched at all).
+  - **Alpha bake-in-vs-runtime resolved**, closing the open question from session 9: each alpha
+    value needs its own baked+converted file, confirmed two ways — (a) the answer was already
+    sitting in `docs/FUTURE_PRONUNCIATION_LORA.md` §3, written back in September, just never
+    cross-referenced into the session-9 question; (b) re-verified live against the audio.cpp
+    GitHub repo (PR #586, PR #614, releases) — still exactly one `ar_lora`/`nar_lora` slot each,
+    no multi-adapter-per-stage support added since. **Lesson worth repeating: check whether an
+    answer already exists in the repo's own docs before treating a question as open** — this one
+    had been sitting unresolved for two sessions while already answered elsewhere.
+  - **Task 15 sent as one complete prompt** (rank-concatenation method, alpha folded into
+    pron's B, precise sha256-based bit-for-bit invariant definition, CPU-only, no base-GGUF
+    touch) — user's agent completed it same session, commits `e654c4f` (merge tool) and
+    `32ffc02` (e2e invariant test), branch `pron-lora-ar-only`.
+  - **Real gotcha the agent found, not in the spec:** the converter
+    (`convert_aitoolkit_yue2_lora.py`) refuses mixed LoRA ranks across AR/NAR branches. A merged
+    file is AR rank 40 (32+8) but NAR stays rank 32, so NAR needs zero-padding to rank 40 at any
+    nonzero alpha (numerically a no-op — padded rows/cols are zero on one side of the product).
+    At alpha=0 no pron block is concatenated, so no padding fires either, both branches stay
+    rank 32 — which is *why* alpha=0 output is v2 verbatim. Documented with file:line in
+    `docs/PRON_LORA_MERGE.md`.
+  - **Exact ai-toolkit scaling convention, verified against source** (also in that doc, pinned
+    to `ostris/ai-toolkit@460c29b`): a module's delta is `multiplier * (alpha/rank) * (B @ A)`;
+    both v2 and pron were trained `alpha == rank`, so each saved file's delta is exactly `B @ A`.
+    The merge folds the user's `--alpha` dial into `B_pron` (the up-projection — the side
+    ai-toolkit's own runtime scale lands on), not `A_pron`; algebraically equivalent either way,
+    chosen to mirror the existing convention.
+  - **Verified directly this session, not just from the agent's commit message/doc** (standing
+    project lesson: agent reports have failed to survive intact multiple times before): read
+    `merge_pron_lora.py` end to end — the alpha=0 short-circuit and the NAR padding logic are
+    correct on inspection. Installed CPU torch + safetensors in a fresh sandbox and **actually
+    ran** `tests/test_merge_pron_lora.py`: **11 passed, 1 skipped**. The skip is
+    `test_alpha_zero_reproduces_live_converted_v2` — it needs the real ~100+ MB v2/pron
+    `.safetensors` files and the audio.cpp converter script, neither available outside the
+    project's own GCS-connected VM, so it skips cleanly on a bare clone by design.
+  - **One thing NOT independently verified, flagged for the user rather than silently trusted:**
+    the actual "alpha=0 sha256 byte-match — PASS" claim in `docs/PRON_LORA_MERGE.md` (matching
+    the live converted v2 adapters' hashes `747d5cfe…`/`ad2c8d86…`) came from the agent running
+    against real files on its own box; no GCS access existed in the verification sandbox to
+    re-check those specific hashes independently. This is exactly the class of claim this
+    project's history says to verify rather than trust prose on (sessions 2-4). **Next action:**
+    have the agent re-run that one skipped test live, on the VM, in front of the user, before
+    treating the no-regression invariant as fully trusted — cheap (~3.5s per the doc) and it's
+    the one guarantee the whole two-LoRA design depends on. Not yet done as of session 10 end.
+  - Also fixed in passing: the user's GCS bucket path is `OSTRIS_Arabic_Suno_Finetuning`
+    (**with** "Arabic") — Claude wrote it without "Arabic" in an early draft of the Task 15
+    prompt this session and caught/corrected it before sending, after the user asked to
+    double-check env vars. Worth double-checking this exact string again if it's ever retyped
+    by hand rather than copied.
+
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
 This is a WebUI session — context window is a real bottleneck, and the user
@@ -737,20 +790,20 @@ relitigate after they've chosen.
 5. ~~L4 smoke + A100 real run~~ — done, session 9 (Tasks 14b/14c). Smoke PASS (`258a098`); 6,100-step
    real run completed cleanly, 4 checkpoints + final in local + GCS. See "Session 9 result" above for
    the loss trend, the backup-daemon settle bug (fixed), and the A100-overkill finding.
-6. **Start session 10 here (CPU, no GPU needed yet):** resolve the alpha
-   bake-in-vs-runtime open question — read the merge code path and how v2's
-   LoRA currently reaches `audio.cpp` inference (`docs/INFERENCE.md`,
-   `convert_aitoolkit_yue2_lora.py`) — see "Control knobs for pronunciation
-   strength" above. This decides whether the alpha × checkpoint sweep is cheap
-   or expensive, so settle it before writing Task 15, not after.
-7. Write **Task 15, the merge tool** (main repo, branch `pron-lora-ar-only`; CPU-only). Settle the
-   remaining design questions at the end of `SESSION_08.md` too; test `alpha = 0` reproduces v2 with
-   a precisely defined invariant. Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are
-   additive with v2's AR part.
-8. Also CPU-only, can be done same session as 6-7: write the offline AR-loss replay script over the
+6. ~~Resolve the alpha bake-in-vs-runtime open question~~ — done, session 10. See
+   "Session 10 result" below and the resolved note under "Control knobs for
+   pronunciation strength" above.
+7. ~~Write Task 15, the merge tool~~ — done, session 10 (commits `e654c4f`, `32ffc02`,
+   branch `pron-lora-ar-only`). `merge_pron_lora.py` + `docs/PRON_LORA_MERGE.md` +
+   12 unit tests (11 run + verified passing this session; 1 real end-to-end test
+   skips without the live GCS artifacts — see "Session 10 result" for the one
+   thing still worth watching run live before fully trusting it).
+8. **Start session 11 here, still CPU-only:** write the offline AR-loss replay script over the
    180 `val` pairs per checkpoint (`PRON_LORA_VERIFICATION.md` A3) — loss curves alone don't
-   establish whether pronunciation actually improved.
-9. **Only once 6-8 are done, switch to L4** (not A100 — session 9 found this workload
+   establish whether pronunciation actually improved. Before running the full 900 forward
+   passes (180 pairs × 5 checkpoints) on any CPU box, benchmark a small slice (5-10 pairs,
+   1 checkpoint) first and extrapolate — don't assume it's cheap or expensive, measure it.
+9. **Only once 8 is done, switch to L4** (not A100 — session 9 found this workload
    data/CPU-bound, L4 gets ~equal throughput for less CU/h) to actually run: the val-loss replay,
    the merge, and the alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using checkpoint × alpha
    combinations (stopping rule), plus the letter-substitution scorecard; listen for
