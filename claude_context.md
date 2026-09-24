@@ -489,7 +489,7 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     on a new branch (not `main`) on that repo, same pattern as the secondary
     repo's `pron-lora-prep`.
 
-- **Session 7 result (gatekeeping pass CLOSED, dataset final):**
+- **Session 7 result (gatekeeping CLOSED, dataset final):**
   - Task 9 confirmed complete (agent commit `6a20446`; the commit message
     carried the full report this time). `/content/human_review.zip` was built
     (49 audio + MANIFEST, all byte-identical to source) and lives on the
@@ -508,10 +508,39 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
     that is from docs, not a verified line. **User called the exclusion a false
     positive; reinstated (Task 11, agent commit `1773dda`, verified from the
     diff):** `training_pair_exclusions.json` is now `[]` (file kept), both mp3s
-    present, MD5s match, torchaudio.load ok. **Final state: 350 ayat x 9
-    reciters = 3,150 files = 6,300 dual-script pairs, 0 exclusions.** 445 tests
-    pass. Lesson: a libsndfile-only failure is not evidence of a bad file; check
+    present, MD5s match, torchaudio.load ok. 445 tests pass. Lesson: a libsndfile-only failure is not evidence of a bad file; check
     the decoder the training loader actually uses before excluding anything.
+  - **The 14 low-format Abu_Bakr files (open since session 5) resolved,
+    Task 12, agent commit `fd0d118`:** 11025 Hz / mono / 24 kbps (keys 010014,
+    010058, 010082, 017021, 017022, 017049, 017075, 017105, 017106, 017109,
+    041002, 041003, 041013, 041035). User's rule: verify them, and disqualify
+    if verified low quality. Agent compared each against Abu_Bakr's own 336
+    normal files (torchaudio decode, no audio modified, 14/14 MD5 match) on
+    4-5.5 kHz HF energy ratio and a 2-5 kHz consonant proxy, with a rule
+    fixed in advance (no threshold tuning). **10 DISQUALIFIED, 4 KEPT, 0
+    inconclusive**; the 10 went into `training_pair_exclusions.json`
+    (pair-level, Abu_Bakr only). Kept: 017105, 041003, 041013, 041035 (inside
+    the reference 5th-95th on both consonant-relevant metrics despite the low
+    bitrate). Honest caveats, verified from the JSON: the bandwidth-cutoff
+    metric is trivially "below p05" for every 11 kHz file, so the rule in
+    effect reduced to "HF ratio or consonant proxy below p05"; `010082` is
+    marginal (HF -23.8 dB vs the reference p05 of -23.76 dB, consonant proxy at
+    p50), and `041002` was driven by HF alone. Cost is 1 pair either way, so
+    left as decided rather than re-litigated. 452 tests pass.
+  - **Final dataset state (after Tasks 11-12): 3,140 files (Abu_Bakr 340
+    ayat, other 8 reciters 350) = 6,280 dual-script pairs**, 10 pair-level
+    exclusions, all Abu_Bakr. Each excluded take drops both script variants.
+  - **Assembly design agreed in principle, not yet built** (user hasn't
+    confirmed the two proposals marked *): flat folder of `.mp3` + same-stem
+    `.txt` (`caption_ext: txt`), one stem per `<reciter>_<key>_<script>`, audio
+    copied not symlinked; pron config must blank `trigger_word`
+    (v2's `arabmaqamrock` would otherwise be prepended to every caption) and set
+    `network_kwargs.ignore_if_contains: ["transformer.nar"]` with rank well
+    below v2's 32; steps set by epochs, not copied from v2's 3000 (~0.5 epoch
+    on 6,280 pairs)*; hold out ~10 ayat across all reciters/scripts for
+    validation loss, split at ayah level*. Assembly script goes in the
+    secondary repo (output gitignored); config goes on a new main-repo branch
+    with the merge tool.
   - **Guardrail restated by the user twice this session (same one as the
     goal section):** this is crisp-pronunciation training, not performance
     training. Corollary for data quality: the only valid exclusion criteria
@@ -553,22 +582,28 @@ reasoning to produce? If yes, write the agent a prompt instead.
    result" above.
 3. ~~Dataset build~~ — done and verified, session 5 (Task 5, agent commits
    `8cac7a6`, `8c8c9a1`). 350 ayat × 9 reciters, 700 captions, 3,150 mp3s,
-   8.31 hrs audio, 6,300 training pairs (still 6,300 after gatekeeping, no exclusions).
+   8.31 hrs audio, 6,300 training pairs (6,280 after gatekeeping, see session 7).
    ~~Broader low-quality gatekeeping pass~~ — done, session 6 (Tasks 6-8,
    commits `df963c7`/`fa56df8`/`dcec1a5`). Integrity independently verified
    (3150/3150 MD5-match GCS), bandwidth check retired as non-discriminative,
    2 files confirmed corrupt at the source, policy locked to flag-only/never
    auto-edit. See "Session 6 result" above for full detail. Task 9 review done, session 7: all flagged
-   files kept, and the 2 "corrupt" files reinstated as false positives. **Gatekeeping is closed; dataset is final (0 exclusions).**
+   files kept, and the 2 "corrupt" files reinstated as false positives. **Gatekeeping is closed; dataset is final (3,140 files / 6,280 pairs).**
    See "Session 7 result".
-4. **Start session 8 here:** build the merge tool with
-   the alpha=0 bit-for-bit invariant test (main repo,
-   `maqamrock-yue2-lora-finetuning`, new branch off `main` — not `main`
-   itself). Independent of the dataset work, nothing blocking it. Merge
-   mechanism and AR-only scoping already confirmed from
-   `docs/FUTURE_PRONUNCIATION_LORA.md` (session 6) — see "Session 6 result"
-   above.
-5. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
+4. **Start session 8 here (user explicitly deferred this at session-7
+   close):** draft the agent spec for dataset assembly + the pron training
+   config, per the "Assembly design" bullet in "Session 7 result". First
+   thing: get the user's yes/no on the two starred proposals (epoch-based step
+   count; ~10-ayat ayah-level hold-out for validation loss). Write the spec
+   for the agent to implement (don't code it here), and require results in
+   committed files/commit message. Then build the merge tool with the alpha=0
+   bit-for-bit invariant test (main repo, `maqamrock-yue2-lora-finetuning`,
+   new branch off `main` — not `main` itself); it's independent of assembly.
+   Merge mechanism and AR-only scoping already confirmed from
+   `docs/FUTURE_PRONUNCIATION_LORA.md` (session 6). Note that v2's LoRA covers
+   both AR and NAR, so the pron adapter's AR-only deltas are additive with
+   v2's, not disjoint from its AR part.
+5. Only then: small low-rank AR-only LoRA run, alpha sweep,
    letter-substitution scorecard.
 
 ## Maintaining this file
