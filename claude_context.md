@@ -384,6 +384,100 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   catch at all (clipping, background noise, silence padding, truncated
   audio). Treat the 14 as the known floor of the problem, not the whole of
   it — plan an actual filtering pass, not just a patch on the flagged set.
+- **Session 6 result (in progress, gatekeeping pass — Tasks 6-8, secondary
+  repo, `pron-lora-prep`, commits `df963c7`, `fa56df8`, `dcec1a5`):**
+  - **Data integrity independently verified, not just claimed**: local MD5 of
+    all 3,150 donor mp3s checked against GCS's own object metadata MD5 (no
+    re-download needed) — 3150/3150 match, checked twice (before and after
+    the analysis steps). Donor audio is confirmed untouched throughout the
+    whole gatekeeping pass. Worth repeating this pattern any time a task
+    claims "nothing was modified" on ungit-tracked data — verify against the
+    source, don't take the self-report on faith (this came from the user
+    pushing back on exactly that).
+  - **Bandwidth/rolloff check retired as a criterion (Task 6→7)**: spectral
+    rolloff for this content sits ~2.5-9.5 kHz regardless of true recording
+    quality (quiet unaccompanied recitation just doesn't carry much energy
+    higher than that), so it can't separate the known-bad 11025Hz files from
+    clean 44100Hz ones — hundreds of legitimately fine files score as "low
+    bandwidth" too. ffprobe's `sample_rate` field remains the correct signal
+    for under-sampling; content-based rolloff isn't a useful proxy for it
+    here. Raw per-file values kept in the report, not treated as actionable.
+  - **2 files are genuinely corrupt, confirmed at the source**:
+    `Hudhaify_128kbps/023005`, `aziz_alili_128kbps/086008` fail libsndfile
+    decode; fresh re-download from the GCS bucket came back byte-identical
+    (same MD5) and still fails — the corruption is in the bucket object
+    itself, not a bad local copy, so re-downloading again won't fix it.
+    Recorded in `data/pron/training_pair_exclusions.json` (drops just those
+    2 (reciter, ayah) pairs, not the ayat themselves — the other 8 reciters'
+    clips for those same ayat are untouched).
+  - **Policy decided, locked in: flag audio quality issues for a human
+    decision, never auto-edit.** Task 7 built a non-destructive silence-trim
+    manifest (offsets only) and demoed actual trims in a throwaway QA zip to
+    prove it was non-destructive. The user reviewed the before/after samples
+    and rejected the whole trim-then-apply approach on principle, even
+    though the actual trim was tiny (290/3,150 files, 203.6s total off
+    29,904.8s = 0.68%) — reasoning: this project's own stated guardrail is
+    crisp articulation, not performance, and the model is independently
+    known to be literal/grapheme-sensitive (see `عمرو` note above), so
+    editing donor audio adds a real risk of introducing something unintended
+    for very little upside. `silence_trim_manifest.json` stays in git as a
+    record but is retired — never applied downstream. **Don't re-propose
+    audio editing (trimming, gain normalization, or otherwise) in a future
+    session without re-litigating this decision first.**
+  - **Reworked silence check (Task 8, replaces Task 6's 20%-of-frames rule)**:
+    single unified metric — longest continuous silent run anywhere in the
+    file (start/middle/end, position reported), flagged if >=3.0s. Much
+    tighter than the old rule: 19/3,150 flagged (was 113), 17 of those in
+    `Husary_128kbps` (consistent with its already-known slow/teaching pace),
+    worst case 5.78s. Short, clean, explainable list — treated as a real
+    exclude-candidate list, not yet acted on (next step: zip the 19
+    originals, untouched, for the user to listen to before deciding).
+  - **New loudness-outlier check (Task 8, `pyloudnorm`, LUFS/BS.1770)**:
+    flag if a file's integrated loudness deviates >3dB from that *same
+    reciter's own* median (not a cross-reciter comparison — different
+    reciters are expected to differ). 312/3,150 flagged, spread across all 9
+    reciters with no single dominant outlier (unlike silence) — per-reciter
+    std is 0.93-2.51dB against a 3dB threshold, a fairly loose net. Current
+    read: this is probably mostly normal verse-to-verse vocal-dynamics
+    variation (a reciter reciting some ayat with more emphasis/volume),
+    *not* a quality defect the way the silence and corrupt-file findings
+    are — don't treat this list as an exclusion candidate without more
+    scrutiny. Side-finding, informational only, not flagged: reciters' own
+    median LUFS spans a 7.4dB range (`aziz_alili` -13.8, loudest;
+    `Abdul_Basit` -21.2, quietest) — expected from different recording
+    setups, may matter later if loudness-matching ever becomes relevant at
+    actual clip-assembly time, not now.
+  - **Dataset-scale/duration-floor thread (raised by user, not yet a
+    decision)**: user proposed a ≥8-hour floor for the corpus (current raw
+    total: 8.31 hrs) and suggested any quality exclusions should be
+    compensated by adding more ayat so the corpus doesn't shrink. Pushed
+    back gently: (a) real exclusion counts so far are tiny relative to
+    8.31 hrs (even the corrupt+silence lists combined are ~21 files, seconds
+    not hours), so backfilling preemptively means guessing at a number for a
+    problem that hasn't materialized; (b) excluding a bad file is a
+    (reciter, ayah)-pair-level decision, not an ayah-level one — dropping
+    one reciter's take for one ayah (cheap, doesn't touch letter coverage)
+    is a different, cheaper lever than dropping the whole ayah to preserve
+    uniform 9-reciter coverage. Agreed to revisit "add more ayat" only if a
+    future finding turns out concentrated/large (e.g. a whole reciter
+    turning out systematically bad), not for the current scattered findings.
+  - **Still open, not yet decided**: what to do with the 19 silence-flagged
+    files (pending a listen) and the 312 loudness-flagged files (pending
+    more scrutiny of whether they're real problems or normal variation);
+    whether/how to fold `training_pair_exclusions.json` into whatever
+    eventually assembles real training pairs.
+  - **Also touched this session (read-only)**: cloned
+    `maqamrock-yue2-lora-finetuning` (main repo, still untouched — only
+    `main` branch, nothing built yet) and skimmed
+    `docs/FUTURE_PRONUNCIATION_LORA.md` ahead of the merge-tool task. It
+    already documents the merge mechanism (`ai-toolkit`'s
+    `toolkit/lora_special.py`: `merged = base_weight + merge_weight*delta`,
+    a literal linear sum) and how to scope an adapter to AR-only
+    (`network_kwargs.ignore_if_contains: ["transformer.nar"]`) — both
+    directly relevant when the merge-tool task actually starts. User's own
+    sequencing call: do the merge tool *after* the dataset is fully settled,
+    on a new branch (not `main`) on that repo, same pattern as the secondary
+    repo's `pron-lora-prep`.
 
 ## Working-mode note: delegate token-heavy work to the user's AI agent
 
@@ -414,14 +508,26 @@ reasoning to produce? If yes, write the agent a prompt instead.
    result" above.
 3. ~~Dataset build~~ — done and verified, session 5 (Task 5, agent commits
    `8cac7a6`, `8c8c9a1`). 350 ayat × 9 reciters, 700 captions, 3,150 mp3s,
-   8.31 hrs audio, 6,300 training pairs. **Open, do this next:** a broader
-   low-quality gatekeeping/filtering pass across the corpus — not just the
-   14 flagged `Abu_Bakr_Ash-Shaatree_128kbps` files (that's the known floor,
-   format-detectable issues only; there may be quality problems ffprobe's
-   format fields can't see at all).
-4. **Do this next:** build the merge tool with the alpha=0 bit-for-bit
-   invariant test (main repo, `maqamrock-yue2-lora-finetuning` — not touched
-   yet this project). Independent of the dataset work, nothing blocking it.
+   8.31 hrs audio, 6,300 training pairs.
+   ~~Broader low-quality gatekeeping pass~~ — done, session 6 (Tasks 6-8,
+   commits `df963c7`/`fa56df8`/`dcec1a5`). Integrity independently verified
+   (3150/3150 MD5-match GCS), bandwidth check retired as non-discriminative,
+   2 files confirmed corrupt at the source, policy locked to flag-only/never
+   auto-edit. See "Session 6 result" above for full detail. **Open, do this
+   next:** three pending decisions before this is truly closed out — (a)
+   listen to the 19 silence-flagged files (mostly `Husary_128kbps`) and
+   decide exclude/keep, (b) decide whether the 312 loudness-flagged files
+   need any action or are normal performance variation (current read: latter,
+   needs more scrutiny either way), (c) fold whatever's decided into an
+   actual training-pairs manifest (currently only the 2 corrupt-file
+   exclusions are recorded).
+4. **Do this next, after the above closes out:** build the merge tool with
+   the alpha=0 bit-for-bit invariant test (main repo,
+   `maqamrock-yue2-lora-finetuning`, new branch off `main` — not `main`
+   itself). Independent of the dataset work, nothing blocking it. Merge
+   mechanism and AR-only scoping already confirmed from
+   `docs/FUTURE_PRONUNCIATION_LORA.md` (session 6) — see "Session 6 result"
+   above.
 5. Only then: dataset assembly, small low-rank AR-only LoRA run, alpha sweep,
    letter-substitution scorecard.
 
