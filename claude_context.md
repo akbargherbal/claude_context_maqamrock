@@ -99,12 +99,44 @@ the untouched baseline (`a0`). That points to a caption/lyric-text issue in
 that specific song, not a pron-LoRA effect — investigate the source lyric
 text for that line independently; don't fold it into further alpha tuning.
 
+Separately: the training caption template (`maqam_prompt_generator.py`,
+used for ~97% of the 267 style-LoRA training songs, fixed across maqams
+except song name/start-phrase) rules out caption-density as the reason
+Kurd underperforms every other maqam at every config tested (2.5→3.0→3.5
+across a0/c3050_a0.5/cfinal_a0.5). Caption is effectively constant across
+maqams, so Kurd's weakness looks maqam-specific, not a caption artifact —
+still open, being probed by the fine sweep below.
+
+## Alpha: confirmed a post-hoc dial, not a training artifact
+
+`alpha` is applied only at merge time (`W = W_base + 1.0·dW_style +
+alpha·dW_pron`); training (6,100 steps, the 4 checkpoints) is already done
+and frozen — no reason 0.5 is special beyond being the best of a coarse
+{0, 0.5, 1.0} grid. The real constraint isn't compute (merge ~3.5s, no
+GPU; conversion cheap; generation is minutes on the L4) — it's the user's
+blind-listening time, which doesn't parallelize. Sweep design should
+economize on that, not on compute: narrow the maqam count before narrowing
+the alpha count.
+
 ## Next step
 
-Bake the production merge at `checkpoint=3050, alpha=0.5` and treat the
-pilot as successful. Optional, not required: a tight confirmatory sweep
-(alpha 0.4/0.6, checkpoint 3050 only) before locking it in. Separately,
-look at the `في ذمة الله` caption text.
+**In flight:** a fine sweep dispatched to the coding agent — checkpoint
+fixed at 3050, alpha ∈ {0.2, 0.3, 0.55, 0.65}, **Hijaz + Kurd only** (not
+all 4 maqams — reusing existing scored a0/a0.5 tracks for those two rather
+than regenerating). Output: `PRON_FINE_SWEEP_INPUT/` + a new
+`KEY_open_after_listening.txt` on branch `pron-lora-ar-only`, same
+blind-then-reveal method as the coarse sweep (new seed: 20260925).
+
+**Next session:** user will bring the completed blind evaluation of these
+8 tracks. Decode against the new key, plot alpha (0.2→0.65) vs score for
+Hijaz and Kurd separately, and check two things: (1) does anything beat
+0.5, i.e. is there a real peak or is 0.5 just "fine within noise," and
+(2) does Kurd's gap to Hijaz shrink at any alpha, or does it stay
+maqam-specific regardless of alpha (which would point away from more
+alpha tuning and toward a Kurd-specific investigation instead).
+
+Once the fine sweep is settled: bake the production merge, then look at
+the `في ذمة الله` caption text as a separate, unrelated task.
 
 ## Maintaining this file
 
