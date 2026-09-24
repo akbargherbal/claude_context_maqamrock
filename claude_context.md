@@ -225,6 +225,47 @@ between per-verse mp3s, and extra recitation cadence (flavor-bleed guardrail).
   was still improving or already plateauing across steps — not done, not
   currently blocking anything.
 
+## Control knobs for pronunciation strength (post-training, session 9)
+
+Revisited the original scope line ("only crisp pronunciation, nothing else — no
+recitation flavor") now that the real run finished, to lay out what will
+actually be tunable. Three things, not one:
+
+1. **Alpha — the primary, purpose-built dial.** `W = W_base + 1.0·dW_style +
+   alpha·dW_pron`, continuous, includes `alpha = 0` (must reproduce v2
+   bit-for-bit). This is what the two-LoRA split was designed to give us.
+2. **Checkpoint choice — a second, independent dial, only visible now that
+   training telemetry exists.** 4 checkpoints (steps 1525/3050/4575/6100) +
+   final. `loss/ar_ce` (pronunciation signal) improved steeply early then
+   flattened after ~step 1500; `loss/ar_kl` (drift from base AR behavior) rose
+   the *entire* run, never plateauing (session 9 result, above). So an earlier
+   checkpoint may give most of the pronunciation gain with less accumulated
+   drift than the final one — it's really **checkpoint × alpha**, a 2D space,
+   not alpha alone.
+3. **A structural guardrail, not a runtime knob, but the reason the design is
+   safe at all.** The pron LoRA is AR-only by construction
+   (`ignore_if_contains: ["transformer.nar"]`) — the NAR/flow path, where
+   musical style/timbre/melisma/cadence actually live, is architecturally
+   untouched at *any* alpha value. This is why alpha can be pushed toward 1.0
+   without the merge risking style bleed: the adapter never had access to
+   that part of the model. Caveat: this guarantees the *style/timbre* path is
+   safe, not that stronger AR conditioning can't carry audible
+   cadence/delivery artifacts of its own — which is exactly why the
+   letter-substitution scorecard + an ear-check for recitation-cadence bleed
+   stay in the eval plan, not skippable.
+
+**Open question this creates, to settle before/while writing Task 15:**
+whether the merge tool makes alpha a *live* multiply-at-load-time scalar, or
+whether — because v2 (rank 32) and pron (rank 8) can't have their raw A/B
+pairs summed — it's forced into rank-concatenation, meaning **each alpha
+value requires baking a separate merged file**, not a cheap runtime slider.
+This is design question (2) from `session_logs/SESSION_08.md` (line ~195),
+now sharper: it decides whether sweeping 4 alpha values × up to 5 checkpoints
+is ~20 cheap inference runs or ~20 separate merge+convert jobs. Resolve by
+reading the actual merge code path and how v2's LoRA currently reaches
+`audio.cpp` inference (`docs/INFERENCE.md`,
+`/content/converter/out/convert_aitoolkit_yue2_lora.py`) before writing Task 15.
+
 ## Explicitly open / not yet decided
 
 - ~~**Dataset scale**~~ — resolved session 5: **350 ayat, dual-script, 9
@@ -696,16 +737,24 @@ relitigate after they've chosen.
 5. ~~L4 smoke + A100 real run~~ — done, session 9 (Tasks 14b/14c). Smoke PASS (`258a098`); 6,100-step
    real run completed cleanly, 4 checkpoints + final in local + GCS. See "Session 9 result" above for
    the loss trend, the backup-daemon settle bug (fixed), and the A100-overkill finding.
-6. **Start session 10 here:** offline AR-loss replay over the 180 `val` pairs per checkpoint
-   (`PRON_LORA_VERIFICATION.md` A3) — loss curves alone don't establish whether pronunciation
-   actually improved.
+6. **Start session 10 here (CPU, no GPU needed yet):** resolve the alpha
+   bake-in-vs-runtime open question — read the merge code path and how v2's
+   LoRA currently reaches `audio.cpp` inference (`docs/INFERENCE.md`,
+   `convert_aitoolkit_yue2_lora.py`) — see "Control knobs for pronunciation
+   strength" above. This decides whether the alpha × checkpoint sweep is cheap
+   or expensive, so settle it before writing Task 15, not after.
 7. Write **Task 15, the merge tool** (main repo, branch `pron-lora-ar-only`; CPU-only). Settle the
-   design questions at the end of `SESSION_08.md` first; test `alpha = 0` reproduces v2 with a
-   precisely defined invariant. Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are
+   remaining design questions at the end of `SESSION_08.md` too; test `alpha = 0` reproduces v2 with
+   a precisely defined invariant. Note v2's LoRA covers AR and NAR, so pron's AR-only deltas are
    additive with v2's AR part.
-8. Only then: alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using the 0.25/0.5/0.75/1.0-epoch
-   checkpoints (stopping rule), plus the letter-substitution scorecard; listen for recitation-cadence
-   bleed (stretched vowels, wrap-up-early).
+8. Also CPU-only, can be done same session as 6-7: write the offline AR-loss replay script over the
+   180 `val` pairs per checkpoint (`PRON_LORA_VERIFICATION.md` A3) — loss curves alone don't
+   establish whether pronunciation actually improved.
+9. **Only once 6-8 are done, switch to L4** (not A100 — session 9 found this workload
+   data/CPU-bound, L4 gets ~equal throughput for less CU/h) to actually run: the val-loss replay,
+   the merge, and the alpha sweep on `INFERENCE/yue2_eval_heldout/` lyrics using checkpoint × alpha
+   combinations (stopping rule), plus the letter-substitution scorecard; listen for
+   recitation-cadence bleed (stretched vowels, wrap-up-early).
 
 ## Maintaining this file
 
