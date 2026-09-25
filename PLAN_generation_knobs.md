@@ -52,18 +52,25 @@ the right grain.
 ## Step map (dependency order)
 
 ```
-Step 0 (bake)                    [CPU only] ──► ships independently, anytime
-Step 1 (checkpoint 1525/4575)    [GPU required] ──► Step 2
+Step 0 (bake)                    [CPU only]     ──► DONE (session 17)
+Step 1 (checkpoint 1525/4575)    [GPU required] ──► Step 2 — CURRENT
 Step 2 (sampling knob probe)     [GPU required] ── re-anchored on Step 1
 Step 3 (Kurd lyric-swap)         [GPU required] ──► fully decoupled
-Step 4 (في ذمة الله lyric text)  [CPU only]     ──► fully decoupled, low priority
+Step 4 (في ذمة الله lyric text)  [CPU only]     ──► REOPENED (session 17)
 ```
 
 Only Step 2 has a real dependency (on Step 1's outcome, not merely on Step 1
 having *run*). Steps 0, 3, 4 can be dispatched in any order, any session,
 before/after/interleaved with 1 and 2. **Steps 0 and 4 never need the GPU box
-at all** — dispatch those on a plain CPU runtime (or even this sandbox) and
-save the GPU session for Steps 1-3.
+at all.**
+
+**Step 0 is closed — see `claude_context.md`'s checklist.** No further
+action needed. **Step 4 is reopened** — a session-17 attempt misdiagnosed
+this as a spelling-inconsistency bug and drafted a fix that was correctly
+rejected (the Uthmanic/wasla spelling is a deliberate user technique, not
+an error); root cause is unknown again. See `claude_context.md` for the
+full correction. Its section below is restored close to the original,
+low-priority, not yet dispatched.
 
 ---
 
@@ -282,10 +289,23 @@ sweeps.
 
 ---
 
-## Step 4 — `في ذمة الله` lyric-text check
+## Step 4 — `في ذمة الله` lyric-text check — REOPENED (session 17)
 
 **Question this answers:** why does this specific line come out wrong in
 every non-collapsed config, including the untouched baseline?
+
+**Session-17 detour (see `claude_context.md` for full account):** found
+this word uses ALEF WASLA (U+0671) where two other instances of "الله" in
+the same lyric use plain ALEF (U+0627) — a real character-level
+difference the model audibly responds to. Wrongly concluded this was a
+spelling-inconsistency bug and drafted a fix (rewriting the word to plain
+alef in 4 repo files). **User corrected this: the wasla/Uthmanic spelling
+is a deliberate, documented technique for verbatim lyric-following in
+Suno-class models, applied consistently and grammatically correctly (real
+hamzat-al-wasl elision) — not an error.** The fix was not applied. Root
+cause of the specific mispronunciation is unknown again; the character-
+level observation stands but doesn't explain why this word breaks while
+the technique presumably works elsewhere in the same lyric.
 
 **Depends on:** nothing. Fully decoupled, low priority, and notably **not
 a GPU task** — this is a source-text/tokenization investigation, not a
@@ -303,7 +323,12 @@ tokenizer-only call. Prefer reading the tokenizer source/vocab file directly
 on CPU first; only fall back to invoking the binary (and only then consider
 whether that needs the GPU box) if source-reading doesn't resolve it.
 
-**Dispatch prompt:**
+**Dispatch prompt — revise before use.** The version below is the
+pre-session-17 original; it does not yet reflect the wasla-is-intentional
+correction, and should be re-scoped (e.g. "check how the tokenizer/vocab
+handles U+0671 specifically, and whether other wasla-spelled words in the
+same lyric render correctly or not" rather than treating the spelling
+itself as suspect) before dispatching:
 
 ```
 Repo: maqamrock-yue2-lora-finetuning, branch pron-lora-ar-only.
@@ -316,10 +341,11 @@ the source lyric text's encoding/diacritics in whatever file holds it, how
 the yue2 text tokenizer handles it (read the tokenizer source/vocab
 directly rather than invoking the CUDA-linked audiocpp_cli binary, unless
 that's genuinely insufficient), and whether the same phrase or its
-individual words render correctly elsewhere in the corpus. Propose a fix
-(corrected source text, tokenization workaround) but do not apply it
-without confirmation. Report findings inline in chat or as a short doc —
-your call given the scope.
+individual words render correctly elsewhere in the corpus. Note: ALEF
+WASLA (U+0671) spelling in this lyric is a deliberate verbatim-lyric-
+following technique, not a typo — do not "fix" it or any other
+wasla-spelled word without explicit confirmation. Report findings inline
+in chat or as a short doc — your call given the scope.
 ```
 
 **Done when:** a diagnosis exists (even if "root cause unclear, here's what
@@ -328,7 +354,9 @@ pass, so "done" here means a written finding, not a track.
 
 **Decision rule:** if a clear text/encoding bug is found, decide whether to
 fix the source lyric file (separate from any pron-LoRA work) or leave it
-as a known limitation.
+as a known limitation. **Do not apply any fix without explicit user
+confirmation, and do not implement it directly in a planning session —
+route it through the coding agent.**
 
 ---
 
@@ -342,3 +370,11 @@ as a known limitation.
   doc on `pron-lora-ar-only`, not back into the frozen file.
 - Do not let Step 2 dispatch before checking `claude_context.md` for
   Step 1's outcome — the anchor checkpoint/alpha it substitutes in matters.
+- Do not treat Uthmanic-script/hamzat-al-wasl spelling (ALEF WASLA, U+0671)
+  anywhere in the lyrics as a typo or inconsistency to "fix" — it's a
+  deliberate, user-documented technique for verbatim lyric-following.
+  Session 17 got this wrong once; don't repeat it.
+- Do not edit the project codebase (lyric files, config, scripts) directly
+  in a planning/context session, even for a fix that seems obviously
+  correct and quick — that's the coding agent's job via a dispatch prompt.
+  Sandbox coding here is for verification/investigation only.

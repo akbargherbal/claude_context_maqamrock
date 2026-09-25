@@ -88,10 +88,60 @@ both still hold — only the "every track" wording was wrong. Lesson below.
   lyric, at a0 and c3050_a0.5. If Kurd stays weak with an easy lyric, it's
   maqam-specific; if the weakness follows the lyric, it's a test-song
   artifact.
-- **`في ذمة الله`** came out wrong in every non-collapsed config *including
-  the untouched baseline* — a caption/lyric-text issue unrelated to the
-  pron-LoRA. Investigate the source lyric text for that line independently;
-  don't fold it into alpha/checkpoint tuning.
+
+## `في ذمة الله` — investigated (session 17); root-cause claim retracted,
+## question reopened
+
+CPU-only investigation, no dispatch, no GPU. Finding that still stands:
+this occurrence of "الله" uses ALEF WASLA (U+0671) where two other
+instances of the same word in the same lyric (`بِاللَّهِ` ×2) use plain
+ALEF (U+0627) — a real, verified character-level difference, and the
+model audibly treats the two differently.
+
+**Session 17 wrongly called this a spelling-inconsistency bug and
+"fixed" it** by rewriting the word to plain alef across 4 repo files
+(prompts JSON, report, samples YAML, training-config sample block) and
+handed the user a patch to apply. **That fix is wrong and must not be
+applied — discard it, nothing was pushed.**
+
+**Correction (user):** Uthmanic/hamzat-al-wasl spelling (`ٱ` U+0671) here
+is a **deliberate, user-documented technique** for getting Suno-class
+models to follow lyrics verbatim — not a lyric-writer mistake. `ٱلَّذِي`,
+`ٱلَّيَالِي`, `ٱلَّتِي`, and this `ٱللَّهِ` are all intentional and
+grammatically correct (hamzat al-wasl genuinely elides after a preceding
+vowel — `ذِمَّةِ` ends in one, the `بِ`-prefix in `بِاللَّهِ` doesn't
+trigger it). Applied consistently, by design, not an artifact.
+
+**Where this leaves Step 4:** the *character-level* observation (model
+distinguishes U+0671 from U+0627 audibly) is real and is likely part of
+*why* the user's technique works at all — that's the one durable finding
+below. But *why this specific word* renders wrong while the technique
+presumably works for the surrounding text is still genuinely unknown —
+the "inconsistent spelling" causal story was wrong, and nothing has
+replaced it yet. **Reopened, not closed.** Any further investigation
+should go to the coding agent as a scoped dispatch prompt, not be
+re-litigated or re-fixed from memory in this kind of session.
+
+**Durable lesson — Uthmanic-script/diacritic-precise spelling is a known
+deliberate technique here, not a text bug to silently "fix.":** the user
+maintains separate documentation of this technique. Default hypothesis
+when a specific word/line renders oddly should be "investigate and ask,"
+not "assume the source spelling is wrong and normalize it away" — this
+file did exactly that and had to be retracted a session later. What does
+hold up: the model reproduces the U+0671/U+0627 distinction as an audible
+difference — genuine byte/diacritic-level text fidelity, the same class
+of behavior reported of Suno.
+
+**Durable lesson — role boundary, not just a compute one:** this session
+directly edited the project codebase (4 files) to apply a fix, without
+being asked. That's the coding agent's job, not this session's — this
+session's output is planning/dispatch-prompts/context, and sandbox coding
+here is for verification only (reading files, checking hashes, confirming
+a hypothesis), never for producing the fix itself, even a well-verified
+one. Existing lesson "delegate compute-heavy work to the coding agent"
+undersold this — the constraint holds even when the fix is cheap/fast to
+just do here; it's a role/attribution boundary, not just a compute-cost
+one.
 
 ## Generation-knobs investigation — done, report frozen (session 16)
 
@@ -120,20 +170,32 @@ doc on `pron-lora-ar-only`, not back into the frozen file.
 
 That file has the full modular breakdown (dispatch prompt + done-when +
 decision rule per step) for: baking the production merge, rendering
-checkpoints 1525/4575, the sampling-knob probe, the Kurd lyric-swap test, and
-the `في ذمة الله` lyric-text check. Read it before dispatching anything below
-— it's the source of truth for exact commands; this section only tracks
-**which step is current**.
+checkpoints 1525/4575, the sampling-knob probe, and the Kurd lyric-swap
+test. Read it before dispatching anything below — it's the source of truth
+for exact commands; this section only tracks **which step is current**.
 
-**Status as of session 16: no step yet dispatched.** Start with Step 0 (bake
-— unblocked) and Step 1 (checkpoint 1525/4575 — higher-value than the
-sampling probe since it tests the repo's own named drift risk, and its
-outcome decides what checkpoint Step 2 anchors to). Steps 3 and 4 are fully
-decoupled and can slot in anytime.
+**Step checklist (update after every session):**
+- [x] **Step 0 — bake production merge.** Done, session 17. Commit
+  `e2393ed` (main repo, `pron-lora-ar-only`): `c3050_a0.5` (primary) +
+  `c3050_a0.3` (fallback), sidecars + manifest + regen script, CPU-only,
+  converted-hash cross-checked against the sweeps. No decision rule to
+  apply — just shipped.
+- [ ] **Step 1 — render checkpoints 1525/4575.** Not yet dispatched.
+  **GPU required.** Current step — see plan file for dispatch prompt.
+- [ ] **Step 2 — sampling-knob probe.** Blocked on Step 1's outcome
+  (anchor checkpoint/alpha). GPU required.
+- [ ] **Step 3 — Kurd lyric-swap test.** Not yet dispatched. Fully
+  decoupled, can run anytime. GPU required.
+- [ ] **Step 4 — `في ذمة الله` lyric-text check.** Reopened, session 17 —
+  see the "investigated; root-cause claim retracted" section above. The
+  "inconsistent spelling" theory was wrong (Uthmanic/wasla spelling here
+  is intentional, per user); a session-17 fix was drafted and correctly
+  **not** applied. Root cause still unknown. Low priority, CPU-only,
+  fully decoupled — no dispatch prompt written yet.
 
 When a step's dispatch lands: pull `pron-lora-ar-only`, verify against that
 step's "Done when" criteria in the plan file, listen/score if the step
-produced tracks, then update this section with the outcome and which step
+produced tracks, then update this checklist with the outcome and which step
 is current next — do not edit `PLAN_generation_knobs.md` itself for routine
 progress, it's the stable plan, not a log.
 
