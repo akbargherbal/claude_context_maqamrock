@@ -93,35 +93,49 @@ both still hold — only the "every track" wording was wrong. Lesson below.
   pron-LoRA. Investigate the source lyric text for that line independently;
   don't fold it into alpha/checkpoint tuning.
 
-## In flight: generation-knobs investigation (dispatched session 15)
+## Generation-knobs investigation — done, report frozen (session 16)
 
-Every track so far has only ever varied `alpha` and checkpoint step;
-`run_one.sh` hardcodes LoRA scale, attention mode, and `cot=off`, and
-leaves every yue2 sampling/guidance option at its audio.cpp default.
-Dispatched a read-only, no-GPU-execution investigation (same format as the
-earlier `docs/investigation.md`) to catalog what else exists — sampling
-params (`semantic_temperature/top_p/top_k/repetition_penalty`),
-`guidance_scale`, `num_inference_steps`, the untested checkpoint 1525,
-whether `merge_pron_lora.py`'s tensor layout supports per-layer/selective
-alpha, and whether `semantic_prefix` could anchor a generation's opening
-away from recitation-style delivery.
+The read-only investigation dispatched session 15 landed on
+`docs/investigation_generation_knobs.md`, branch
+`pron-lora-knobs-investigation` (main repo), commit `6478a43`. **Session 16
+verified it**: spot-checked its most load-bearing claims (the `guidance_scale`
+1.01-effective-default, the CFG negative-prefix construction) directly
+against a fresh clone of `0xShug0/audio.cpp` at the pinned commit
+(`ac16661d…`) — both confirmed exactly as described, source-level, not just
+against the doc's own citations. Cross-checked repo-internal claims
+(`ar_ce`/`ar_kl` checkpoint table, `merge_pron_lora.py`'s rank-concat logic,
+the "generic CLI flags are no-ops" claim) against `DECISIONS.md`/
+`PROGRESS.md`/source — no contradictions found.
 
-**Target:** `docs/investigation_generation_knobs.md`, branch
-`pron-lora-knobs-investigation` (main repo). **Report pending.**
+A subsequent housekeeping/docs-reconciler pass (still session 16) froze the
+report (added to `DEFAULT_EXCLUDES`, matching `docs/investigation.md`'s
+treatment) because its citations resolve to the external `audio.cpp` repo,
+which the reconciler can't check against this one. **Re-verified after that
+pass: zero-line diff on the report itself; none of the files it cites content
+from were touched.** The report stands as accurate. It will not be edited
+again — new findings from the follow-through work go into this file or a new
+doc on `pron-lora-ar-only`, not back into the frozen file.
 
-## Next step
+## Next step — see `PLAN_generation_knobs.md` (this repo)
 
-1. Bake the production merge now: `c3050_a0.5` primary, `c3050_a0.3`
-   fallback. Not blocked by anything below.
-2. When the knobs investigation report lands: spot-check its 1-2 strongest
-   claims against the actual source/files before trusting them (see lesson
-   above), then design — but don't yet run — a small, cheap empirical test
-   of the top 2-3 candidate knobs (sampling params need no merge, so this
-   is free; checkpoint 1525 needs one ~3.5s merge).
-3. Dispatch the Kurd lyric-swap test (4 tracks: Kurd-lyric-on-Hijaz,
-   Hijaz-lyric-on-Kurd, at a0 and c3050_a0.5) whenever there's listening
-   bandwidth for it — independent of (2).
-4. `في ذمة الله` lyric-text check stays a separate, low-priority task.
+That file has the full modular breakdown (dispatch prompt + done-when +
+decision rule per step) for: baking the production merge, rendering
+checkpoints 1525/4575, the sampling-knob probe, the Kurd lyric-swap test, and
+the `في ذمة الله` lyric-text check. Read it before dispatching anything below
+— it's the source of truth for exact commands; this section only tracks
+**which step is current**.
+
+**Status as of session 16: no step yet dispatched.** Start with Step 0 (bake
+— unblocked) and Step 1 (checkpoint 1525/4575 — higher-value than the
+sampling probe since it tests the repo's own named drift risk, and its
+outcome decides what checkpoint Step 2 anchors to). Steps 3 and 4 are fully
+decoupled and can slot in anytime.
+
+When a step's dispatch lands: pull `pron-lora-ar-only`, verify against that
+step's "Done when" criteria in the plan file, listen/score if the step
+produced tracks, then update this section with the outcome and which step
+is current next — do not edit `PLAN_generation_knobs.md` itself for routine
+progress, it's the stable plan, not a log.
 
 ## Maintaining this file
 
