@@ -79,14 +79,15 @@ both still hold — only the "every track" wording was wrong. Lesson below.
 
 ## Open threads
 
-- **Kurd underperformance** (2.5→3.0→3.5 across a0/c3050_a0.5/cfinal_a0.5,
-  weakest maqam at every config tested). Caption density is ruled out.
-  Confounded with "only one held-out song per maqam" — never separated
-  maqam-specific weakness from this-particular-song weakness. **Lyric-swap
-  test rendered session 18 (Step 3, commit `d3f4922`)** — 4 tracks awaiting
-  human listening. If `KurdStyle_HijazLyrics` (Kurd tag, easy Hijaz lyric)
-  stays weak, it's maqam-specific; if it sounds fine, the weakness was
-  following the lyric, and Kurd's low scores stop being a maqam signal.
+- **Kurd underperformance — closed, session 19.** Was: 2.5→3.0→3.5 across
+  a0/c3050_a0.5/cfinal_a0.5, weakest maqam at every config tested, confounded
+  with "only one held-out song per maqam." Step 3's lyric-swap listening
+  (session 19, see checklist) found `KurdStyle_HijazLyrics` (Kurd tag, easy
+  Hijaz lyric) scored 4/5 (a0) and 3.75/5 (c3050_a0.5) — both well above
+  Kurd's own-lyric scores at the same configs (2.5, 3.0). The weakness
+  follows the lyric, not the maqam. **Kurd's past low scores are a
+  test-song artifact, not a maqam-level pron-LoRA signal — stop treating
+  them as one in future sweeps.**
 
 ## `في ذمة الله` — investigated (session 17); root-cause claim retracted,
 ## question reopened
@@ -202,6 +203,10 @@ checkpoints 1525/4575, the sampling-knob probe, and the Kurd lyric-swap
 test. Read it before dispatching anything below — it's the source of truth
 for exact commands; this section only tracks **which step is current**.
 
+**Current step: Step 2 (sampling-knob probe)**, anchored at
+checkpoint 3050 / alpha 0.5 (Step 1 concluded inconclusive — see checklist).
+Step 4 remains open and fully decoupled, dispatchable any time (CPU only).
+
 **Step checklist (update after every session):**
 - [x] **Step 0 — bake production merge.** Done, session 17. Commit
   `e2393ed` (main repo, `pron-lora-ar-only`): `c3050_a0.5` (primary) +
@@ -212,23 +217,35 @@ for exact commands; this section only tracks **which step is current**.
   Commit `048ff84` (main repo, `pron-lora-ar-only`): 4 blinded tracks
   (`c1525_a0.5`/`c4575_a0.5` × Hijaz/Kurd) + sidecars + `KEY.json` in
   `results/pron_ckpt_sweep/` and `PRON_CKPT_SWEEP_INPUT/`. All 4 exit=0,
-  zero failures, zero truncations. **Verified against "Done when"; human
-  listening/scoring not yet done** — current step is applying the
-  decision rule once that's back, then this checklist entry needs the
-  outcome (which checkpoint, if any, becomes the new anchor).
-- [ ] **Step 2 — sampling-knob probe.** Blocked on Step 1's decision rule
-  (anchor checkpoint/alpha) — listening/scoring still outstanding. GPU
-  required. Do not dispatch until Step 1's entry above records an outcome.
-- [ ] **Step 3 — Kurd lyric-swap test.** Rendered, session 18. Commit
+  zero failures, zero truncations. **Listened and scored, session 19**
+  (`ab_eval_chkpt_alpha/` in this repo): Hijaz — 1525=3.5/5 no bleed,
+  4575=4/5 **with an explicit bleed flag** (ر rendered recitation-like);
+  Kurd — 1525=3/5 (~ties c3050_a0.5's known 3.0), 4575=3.5/5 no bleed.
+  **Outcome: inconclusive, no clean winner** — 4575's higher Hijaz score
+  comes bundled with the exact recitation-drift failure mode this project
+  rejects, so it's disqualified regardless of score; 1525 is clean but
+  doesn't clearly beat 3050. **3050 stays the anchor** for Step 2 and for
+  production. Worth carrying forward as a finding, not a re-anchor: 4575
+  trades ~0.5 points of score for reintroduced bleed.
+- [ ] **Step 2 — sampling-knob probe.** Unblocked as of session 19 — Step 1
+  concluded inconclusive, so per the plan's default, anchor at
+  `<ANCHOR_CHECKPOINT>=3050`, `<ANCHOR_ALPHA>=0.5` (i.e. dispatch as
+  originally designed, no substitution needed). GPU required. Not yet
+  dispatched.
+- [x] **Step 3 — Kurd lyric-swap test.** Rendered, session 18. Commit
   `d3f4922` (main repo, `pron-lora-ar-only`): 4 blinded tracks
   (`KurdStyle_HijazLyrics`/`HijazStyle_KurdLyrics` × a0/c3050_a0.5) +
   sidecars + `KEY.json` in `results/maqam_lyric_swap/` and
   `MAQAM_LYRIC_SWAP_INPUT/`. All 4 exit=0, zero failures, zero
-  truncations. **Verified against "Done when"; human listening/scoring
-  not yet done** — apply the decision rule (stays weak with the easy
-  Hijaz lyric → maqam-specific; sounds fine → test-song artifact, drop
-  Kurd as a maqam-level concern) once that's back, then update this
-  entry with the outcome.
+  truncations. **Listened and scored, session 19**
+  (`ab_maqam_lyric_swap/` in this repo): `KurdStyle_HijazLyrics` scored
+  4/5 (a0) and 3.75/5 (c3050_a0.5) — both clean, both well above Kurd's
+  own-lyric scores at the same configs (2.5, 3.0). **Outcome: the
+  weakness follows the lyric, not the maqam** — test-song artifact, Kurd
+  dropped as a maqam-level concern (see "Open threads," closed). Side
+  finding: `HijazStyle_KurdLyrics` at a0 also dropped to 2.5/5 with a
+  dialect-drift flag, reinforcing that lyric difficulty (not maqam style)
+  drives the effect.
 - [ ] **Step 4 — `في ذمة الله` lyric-text check.** Reopened, session 17 —
   see the "investigated; root-cause claim retracted" section above. The
   "inconsistent spelling" theory was wrong (Uthmanic/wasla spelling here
