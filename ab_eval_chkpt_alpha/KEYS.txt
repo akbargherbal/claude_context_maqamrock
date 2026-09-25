@@ -1,0 +1,16 @@
+========================================================================
+                     A/B EVALUATION DECODER KEY
+               Generated: 2026-09-25 14:56:14
+========================================================================
+Blind Filename             | Checkpoint   | Alpha    | Source Folder  
+------------------------------------------------------------------------
+Hijaz_20260924_A.wav       | 1525         | 0.5      | c1525_a0.5     
+Hijaz_20260924_B.wav       | 4575         | 0.5      | c4575_a0.5     
+Kurd_20260924_A.wav        | 1525         | 0.5      | c1525_a0.5     
+Kurd_20260924_B.wav        | 4575         | 0.5      | c4575_a0.5     
+========================================================================
+
+EVALUATOR INSTRUCTIONS:
+1. Send the .wav files to the evaluator without sharing KEYS.txt.
+2. Evaluator blind-rates preference (A vs B) for each track.
+3. Match the winning label against this table to determine the superior checkpoint.
