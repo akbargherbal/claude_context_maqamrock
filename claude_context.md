@@ -79,6 +79,22 @@ both still hold — only the "every track" wording was wrong. Lesson below.
 
 ## Open threads
 
+- **`t0.8` (semantic_temperature=0.8) — score gain bundled with recitation
+  drift, not shipped, session 20.** Step 2's sampling-knob probe: the only
+  knob of 4 that clearly moved both held-out maqams' scores up (Hijaz
+  3.5→4.0, Kurd 3.0→4.0 vs the `c3050_a0.5` reference) — but both tracks
+  picked up a mild bleed flag, and the Kurd listening note specifically
+  names a pre-phrase inhale and verse-ending sukūn pattern that reads as
+  Quranic recitation cadence, i.e. exactly what this project is designed
+  to avoid. Disqualified as-is (same rule as ckpt 4575 in Step 1: a score
+  gain that trades for recitation-y delivery is a failure). **Follow-up
+  question raised by the listener, not yet investigated:** would pairing
+  `t0.8` with a *lower* alpha (0.3-0.4, both already have fallback/probe
+  precedent) recover the articulation gain while backing off the
+  recitation cadence enough to drop the bleed flag? This is a new
+  2-axis probe (temperature × alpha), not covered by Step 2's plan or any
+  existing dispatch prompt — needs its own scoped write-up before
+  dispatching, GPU required.
 - **Kurd underperformance — closed, session 19.** Was: 2.5→3.0→3.5 across
   a0/c3050_a0.5/cfinal_a0.5, weakest maqam at every config tested, confounded
   with "only one held-out song per maqam." Step 3's lyric-swap listening
@@ -203,9 +219,10 @@ checkpoints 1525/4575, the sampling-knob probe, and the Kurd lyric-swap
 test. Read it before dispatching anything below — it's the source of truth
 for exact commands; this section only tracks **which step is current**.
 
-**Current step: Step 2 (sampling-knob probe)**, anchored at
-checkpoint 3050 / alpha 0.5 (Step 1 concluded inconclusive — see checklist).
-Step 4 remains open and fully decoupled, dispatchable any time (CPU only).
+**Current step: Step 4** (`في ذمة الله` lyric-text check) — the only step
+left open. Steps 0-3 are all closed as of session 20. Step 4 is CPU-only,
+low priority, fully decoupled, dispatchable any time — see its section
+above for the revised (post-wasla-correction) dispatch prompt.
 
 **Step checklist (update after every session):**
 - [x] **Step 0 — bake production merge.** Done, session 17. Commit
@@ -227,11 +244,27 @@ Step 4 remains open and fully decoupled, dispatchable any time (CPU only).
   doesn't clearly beat 3050. **3050 stays the anchor** for Step 2 and for
   production. Worth carrying forward as a finding, not a re-anchor: 4575
   trades ~0.5 points of score for reintroduced bleed.
-- [ ] **Step 2 — sampling-knob probe.** Unblocked as of session 19 — Step 1
-  concluded inconclusive, so per the plan's default, anchor at
-  `<ANCHOR_CHECKPOINT>=3050`, `<ANCHOR_ALPHA>=0.5` (i.e. dispatch as
-  originally designed, no substitution needed). GPU required. Not yet
-  dispatched.
+- [x] **Step 2 — sampling-knob probe. Closed, session 20 — no knob ships.**
+  Dispatched and rendered (main repo commits `bc01270` + `ccd5008` T4
+  re-render of 2 lost Kurd WAVs), anchored at checkpoint 3050/alpha 0.5 per
+  Step 1's inconclusive result. Scored against the `c3050_a0.5` reference
+  (Hijaz ≈3.5-4/no bleed, Kurd=3.0/no bleed) in
+  `eval_pron_knob_probe/step2_listening_checklist.md` (this repo):
+  `g1.0` (guidance_scale=1.0) — Hijaz 3.5/no bleed, Kurd 3.0/**bleed=yes**;
+  `g1.5` (guidance_scale=1.5) — Hijaz 3.5/no bleed, Kurd 3.5/mild bleed;
+  `t0.8` (semantic_temperature=0.8) — Hijaz 4.0/mild bleed, Kurd 4.0/mild
+  bleed; `rp1.4` (semantic_repetition_penalty=1.4) — Hijaz 3.5/no bleed,
+  Kurd 3.0/mild bleed. Applying the plan's decision rule (clear replicated
+  direction required; a score gain that costs bleed is disqualified, not a
+  win): `g1.0`/`g1.5`/`rp1.4` are flat or mixed across the two maqams — no
+  effect, dropped. `t0.8` is the only knob with a clear replicated
+  score gain (both maqams 3.5-4.0→4.0) but it's **disqualified**, same
+  failure mode as checkpoint 4575 in Step 1 — the listener's own notes on
+  the Kurd track describe a pre-phrase inhale and verse-ending sukūn
+  pattern characteristic of Quranic recitation cadence, not incidental
+  noise. **Outcome: no knob from this probe ships.** `t0.8` logged as an
+  open thread below (score gain is real, but bundled with recitation
+  drift) rather than shipped off n=2, per plan.
 - [x] **Step 3 — Kurd lyric-swap test.** Rendered, session 18. Commit
   `d3f4922` (main repo, `pron-lora-ar-only`): 4 blinded tracks
   (`KurdStyle_HijazLyrics`/`HijazStyle_KurdLyrics` × a0/c3050_a0.5) +
