@@ -82,12 +82,11 @@ both still hold — only the "every track" wording was wrong. Lesson below.
 - **Kurd underperformance** (2.5→3.0→3.5 across a0/c3050_a0.5/cfinal_a0.5,
   weakest maqam at every config tested). Caption density is ruled out.
   Confounded with "only one held-out song per maqam" — never separated
-  maqam-specific weakness from this-particular-song weakness. **Planned
-  test (not yet dispatched):** swap lyrics — generate Kurd's caption+maqam
-  with the Hijaz held-out lyric, and Hijaz's caption+maqam with the Kurd
-  lyric, at a0 and c3050_a0.5. If Kurd stays weak with an easy lyric, it's
-  maqam-specific; if the weakness follows the lyric, it's a test-song
-  artifact.
+  maqam-specific weakness from this-particular-song weakness. **Lyric-swap
+  test rendered session 18 (Step 3, commit `d3f4922`)** — 4 tracks awaiting
+  human listening. If `KurdStyle_HijazLyrics` (Kurd tag, easy Hijaz lyric)
+  stays weak, it's maqam-specific; if it sounds fine, the weakness was
+  following the lyric, and Kurd's low scores stop being a maqam signal.
 
 ## `في ذمة الله` — investigated (session 17); root-cause claim retracted,
 ## question reopened
@@ -143,6 +142,35 @@ undersold this — the constraint holds even when the fix is cheap/fast to
 just do here; it's a role/attribution boundary, not just a compute-cost
 one.
 
+## `بِاللَّهِ` / `ٱللَّهِ` diacritic fix — applied (session 18); one part unresolved
+
+Separate from the character-level wasla question above: while listening to
+the Nahawand fine-sweep tracks, the user caught an over-specified diacritic
+— a FATHA+SHADDA doubling the second ل in both `بِاللَّهِ` and `ٱللَّهِ` —
+that doesn't belong in either the ب-prefixed or the wasla-spelled form.
+Confirmed against the actual lyric source (`config/akbar_arabic_rock_lora.yml`
+sample prompts): `بِاللَّهِ` opens the Nahawand lyric (utterance-initial,
+correctly plain alef) and `فِي ذِمَّةِ ٱللَّهِ` has `ذِمَّةِ` (ends in a
+vowel) before it (correctly wasla, per the finding above).
+
+**Applied, commit `f703b7d`:** dropped the FATHA (U+064E) + SHADDA (U+0651)
+on the second ل in both words, everywhere they occur in the repo. ALEF WASLA
+(U+0671) and the KASRA after ب were explicitly left untouched — this is
+*not* the session-17 wasla→plain-alef fix, it's a narrower, separately
+verified diacritic correction. Good fix, correctly scoped.
+
+**Unresolved — needs a decision:** a second commit, `62f2bd5`, landed
+immediately after and reverses 5 occurrences of `ٱللَّهِ` (`فِي ذِمَّةِ
+اللهِ` ×4, `رَسُولَ اللهِ` ×1) from ALEF WASLA to plain ALEF — i.e. it
+re-applies the exact session-17 change that was retracted. Its commit
+message claims "explicit user confirmation this session," but this
+session's own analysis of the lyric source (the vowel-ending `ذِمَّةِ`
+before it) contradicts that change. **Flagged to the user session 18, not
+yet resolved** — either keep it (if there's a reason the wasla finding
+above doesn't apply to these specific occurrences) or dispatch a revert.
+Do not treat this as settled either way until that decision is made and
+logged here.
+
 ## Generation-knobs investigation — done, report frozen (session 16)
 
 The read-only investigation dispatched session 15 landed on
@@ -180,12 +208,27 @@ for exact commands; this section only tracks **which step is current**.
   `c3050_a0.3` (fallback), sidecars + manifest + regen script, CPU-only,
   converted-hash cross-checked against the sweeps. No decision rule to
   apply — just shipped.
-- [ ] **Step 1 — render checkpoints 1525/4575.** Not yet dispatched.
-  **GPU required.** Current step — see plan file for dispatch prompt.
-- [ ] **Step 2 — sampling-knob probe.** Blocked on Step 1's outcome
-  (anchor checkpoint/alpha). GPU required.
-- [ ] **Step 3 — Kurd lyric-swap test.** Not yet dispatched. Fully
-  decoupled, can run anytime. GPU required.
+- [x] **Step 1 — render checkpoints 1525/4575.** Rendered, session 18.
+  Commit `048ff84` (main repo, `pron-lora-ar-only`): 4 blinded tracks
+  (`c1525_a0.5`/`c4575_a0.5` × Hijaz/Kurd) + sidecars + `KEY.json` in
+  `results/pron_ckpt_sweep/` and `PRON_CKPT_SWEEP_INPUT/`. All 4 exit=0,
+  zero failures, zero truncations. **Verified against "Done when"; human
+  listening/scoring not yet done** — current step is applying the
+  decision rule once that's back, then this checklist entry needs the
+  outcome (which checkpoint, if any, becomes the new anchor).
+- [ ] **Step 2 — sampling-knob probe.** Blocked on Step 1's decision rule
+  (anchor checkpoint/alpha) — listening/scoring still outstanding. GPU
+  required. Do not dispatch until Step 1's entry above records an outcome.
+- [ ] **Step 3 — Kurd lyric-swap test.** Rendered, session 18. Commit
+  `d3f4922` (main repo, `pron-lora-ar-only`): 4 blinded tracks
+  (`KurdStyle_HijazLyrics`/`HijazStyle_KurdLyrics` × a0/c3050_a0.5) +
+  sidecars + `KEY.json` in `results/maqam_lyric_swap/` and
+  `MAQAM_LYRIC_SWAP_INPUT/`. All 4 exit=0, zero failures, zero
+  truncations. **Verified against "Done when"; human listening/scoring
+  not yet done** — apply the decision rule (stays weak with the easy
+  Hijaz lyric → maqam-specific; sounds fine → test-song artifact, drop
+  Kurd as a maqam-level concern) once that's back, then update this
+  entry with the outcome.
 - [ ] **Step 4 — `في ذمة الله` lyric-text check.** Reopened, session 17 —
   see the "investigated; root-cause claim retracted" section above. The
   "inconsistent spelling" theory was wrong (Uthmanic/wasla spelling here
