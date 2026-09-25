@@ -21,128 +21,111 @@ MaqamRock's shipped LoRA (v2) is mature/stable (8.5/10). This side-project's
 *only* target is crisper ح/خ/ع/ض articulation inside the existing MaqamRock
 style. It is explicitly **not** about giving MaqamRock any recitation
 flavor (melisma, tajweed cadence, elongated endings). Any result that trades
-pronunciation gain for recitation-y delivery is a failure, not a partial win
-— this got tested for real this session (see below) and the failure mode is
-worse than "a bit of bleed": at high alpha it's total collapse into Quran
-recitation, not a rock song.
+pronunciation gain for recitation-y delivery is a failure, not a partial win.
 
 **Design:** two LoRAs, merged offline: `W = W_base + 1.0·dW_style +
-alpha·dW_pron`. v2 checkpoint itself is never touched. `alpha=0` must
-reproduce v2 bit-for-bit — **verified live, PASS** (both hashes matched,
-session 11). This invariant is what makes "no regression" true by
-construction; trust it.
+alpha·dW_pron`. v2 checkpoint itself is never touched. `alpha=0` reproduces
+v2 bit-for-bit — **verified live, PASS** (session 11). Trust this invariant.
 
-## Where things stand (as of session 14)
+## Where things stand (as of session 15) — decision made, ready to ship
 
-Dataset (6,280 dual-script pairs, 9 reciters, finalized session 7), training
-(6,100-step AR-only LoRA, 4 checkpoints: 1525/3050/4575/6100=final), and the
-merge tool (`merge_pron_lora.py`, rank-concatenation, alpha baked into a
-separate file per value — no runtime slider exists in audio.cpp/ai-toolkit)
-are all built, verified, and closed. Not open questions anymore.
+Dataset, training (6,100-step AR-only LoRA, checkpoints 1525/3050/4575/6100),
+and the merge tool are all built, verified, and closed — not open questions.
 
-**Session 13** generated a blinded 5-config × 4-maqam listening sweep
-(configs: `a0`, `c3050_a0.5`, `c3050_a1.0`, `cfinal_a0.5`, `cfinal_a1.0`;
-20 mp3s in `PRON_SWEEP_EVAL_INPUT/`, key in `KEY_open_after_listening.txt`).
+**Session 13** ran a blinded 5-config × 4-maqam sweep. **Session 14** decoded
+it: `checkpoint=3050, alpha=0.5` beat the untouched baseline (3.5 vs 3.0
+avg) with 0/4 bleed flags; alpha=1.0 collapsed at both checkpoints.
 
-**Session 14 — user completed the blind listening eval, decoded and
-analyzed** (`PRON_SWEEP_EVAL_INPUT/my_evaluation.txt`). Result:
+**Session 15** ran a fine sweep around that result — alpha ∈
+{0.2, 0.3, 0.55, 0.65} at checkpoint 3050, Hijaz + Kurd only — to check for
+a hidden peak above 0.5. **Finding: no peak.** Scores don't move
+monotonically with alpha; the 0.65 tracks scored highest on a holistic
+1-5 scale, but the listener's own free-text notes flagged one of them as
+audibly Quranic-recitation delivery. Bleed flags first appear at 0.55.
 
-| config | avg score /5 | explicit "Quran bleed" tracks |
-|---|---|---|
-| a0 (baseline) | 3.0 | 0/4 |
-| **c3050_a0.5** | **3.5 (best)** | **0/4** |
-| c3050_a1.0 | 0.5 | 4/4 |
-| cfinal_a0.5 | 3.125 | 1/4 |
-| cfinal_a1.0 | 0.0 | 4/4 |
+**Decision: ship `c3050_a0.5` as the production merge; bake `c3050_a0.3` as
+a cheap fallback** (similar score, 0 bleed, more margin below the 0.55
+bleed-onset point). **Do not test alpha ≥ 0.55 again** — it's past the
+useful range, same conclusion as the earlier alpha=1.0 collapse finding.
+This is independent of the open knobs investigation below and can proceed
+now.
 
-**Decision: `checkpoint=3050, alpha=0.5` is the winning config.** Beats
-baseline on score, zero bleed flags, and fixed a specific baseline error
-(بالله) that both the baseline and the final-checkpoint config got wrong.
-Treat this as "good enough" per the user's own stated preference — a
-narrower confirmatory sweep (e.g. alpha 0.4/0.6 at checkpoint 3050) is
-optional polish, not required before shipping.
+## Correction to a prior entry
+
+Session 14 recorded "every alpha=1.0 track scored 0." Checked against the
+actual eval this session: 7/8 did; `Kurd_D` (`c3050_a1.0`) scored 2/5 with
+an explicit bleed flag, not 0. The collapse conclusion and the ~0 average
+both still hold — only the "every track" wording was wrong. Lesson below.
 
 ## Durable lessons (apply to future sessions/projects, not just this one)
 
-- **Alpha near 1.0 is not "more flavor," it's mode collapse.** Every
-  alpha=1.0 track (both checkpoints) scored 0 and was independently flagged
-  as literal Quran recitation, several abnormally short (12–30s) — the
-  model stops singing and just recites. Don't test alpha=1.0 again; the
-  useful range is well below it.
-- **Checkpoint matters as much as alpha, and now it's ear-confirmed, not
-  just loss-inferred.** `loss/ar_kl` (AR drift) rises the *entire* training
-  run and never plateaus, while `loss/ar_ce` (pronunciation signal) flattens
-  early (~step 1500). Ear results now confirm the practical consequence:
-  at matched alpha=0.5, checkpoint 3050 is clean but the final checkpoint
-  (6100) leaks a bleed flag. **Prefer an earlier checkpoint over the final
-  one** whenever a training run shows this ar_kl-keeps-rising shape.
-- **A 0/5-style catch-all score plus free-text notes is a fine substitute
-  for a rigid pre-built rubric.** The user skipped the structured
-  `PRON_SWEEP_LISTENING_EVAL.md` checklist and just wrote a flat per-track
-  eval — it still cleanly separated collapse from ordinary pronunciation
-  variance (0 = "this is Quran," not a song). Don't over-engineer the
-  eval template next time; a free-text pass + a blind key is enough.
-- **Agent prose reports don't reliably survive intact — verify claims
-  against actual files/hashes**, not the commit message or chat summary
-  describing them. This has bitten the project multiple times before and
-  is worth re-checking every time a "done, verified" claim shows up.
-- **Delegate token- or compute-heavy work (large data, GPU runs, log
-  analysis) to the user's separate coding agent** by writing a complete,
-  copy-pasteable, ordered prompt — no placeholders, no back-and-forth. Do
-  small/cheap things (a quick calc, reading one file) directly here.
-  Writing implementation code directly in this WebUI session should be rare.
+- **A holistic 1-5 "rate it as a song" score does not penalize recitation
+  bleed.** The single highest-scoring fine-sweep track had a listener note
+  describing it as clearly Quranic in delivery. Score and bleed are two
+  different axes — track bleed as an explicit yes/mild/no flag per track,
+  don't infer it from the number.
+- **At n=1 track per alpha step (0.05–0.1 spacing), score deltas of 1-2
+  points are noise, not a peak.** Don't chase a local max in a fine sweep
+  unless it replicates (repeat seed) or the design expected noise.
+- **Re-verify agent/session summary claims against the actual data before
+  repeating them** — even a self-authored one-line summary ("every track
+  scored 0") can drift from what the eval file actually says. Caught once
+  already (session 14→15); treat any absolute claim ("every", "always") in
+  this file as worth a quick recheck before leaning on it.
+- Prior lessons still hold: prefer an earlier checkpoint over the final one
+  when `ar_kl` never plateaued in training; delegate compute/token-heavy
+  work to the user's coding agent with a complete, scoped, copy-pasteable
+  prompt; verify "done" claims against files/hashes, not prose.
 
-## Open thread (not alpha/checkpoint-related)
+## Open threads
 
-`في ذمة الله` came out wrong in **every** non-collapsed config, including
-the untouched baseline (`a0`). That points to a caption/lyric-text issue in
-that specific song, not a pron-LoRA effect — investigate the source lyric
-text for that line independently; don't fold it into further alpha tuning.
+- **Kurd underperformance** (2.5→3.0→3.5 across a0/c3050_a0.5/cfinal_a0.5,
+  weakest maqam at every config tested). Caption density is ruled out.
+  Confounded with "only one held-out song per maqam" — never separated
+  maqam-specific weakness from this-particular-song weakness. **Planned
+  test (not yet dispatched):** swap lyrics — generate Kurd's caption+maqam
+  with the Hijaz held-out lyric, and Hijaz's caption+maqam with the Kurd
+  lyric, at a0 and c3050_a0.5. If Kurd stays weak with an easy lyric, it's
+  maqam-specific; if the weakness follows the lyric, it's a test-song
+  artifact.
+- **`في ذمة الله`** came out wrong in every non-collapsed config *including
+  the untouched baseline* — a caption/lyric-text issue unrelated to the
+  pron-LoRA. Investigate the source lyric text for that line independently;
+  don't fold it into alpha/checkpoint tuning.
 
-Separately: the training caption template (`maqam_prompt_generator.py`,
-used for ~97% of the 267 style-LoRA training songs, fixed across maqams
-except song name/start-phrase) rules out caption-density as the reason
-Kurd underperforms every other maqam at every config tested (2.5→3.0→3.5
-across a0/c3050_a0.5/cfinal_a0.5). Caption is effectively constant across
-maqams, so Kurd's weakness looks maqam-specific, not a caption artifact —
-still open, being probed by the fine sweep below.
+## In flight: generation-knobs investigation (dispatched session 15)
 
-## Alpha: confirmed a post-hoc dial, not a training artifact
+Every track so far has only ever varied `alpha` and checkpoint step;
+`run_one.sh` hardcodes LoRA scale, attention mode, and `cot=off`, and
+leaves every yue2 sampling/guidance option at its audio.cpp default.
+Dispatched a read-only, no-GPU-execution investigation (same format as the
+earlier `docs/investigation.md`) to catalog what else exists — sampling
+params (`semantic_temperature/top_p/top_k/repetition_penalty`),
+`guidance_scale`, `num_inference_steps`, the untested checkpoint 1525,
+whether `merge_pron_lora.py`'s tensor layout supports per-layer/selective
+alpha, and whether `semantic_prefix` could anchor a generation's opening
+away from recitation-style delivery.
 
-`alpha` is applied only at merge time (`W = W_base + 1.0·dW_style +
-alpha·dW_pron`); training (6,100 steps, the 4 checkpoints) is already done
-and frozen — no reason 0.5 is special beyond being the best of a coarse
-{0, 0.5, 1.0} grid. The real constraint isn't compute (merge ~3.5s, no
-GPU; conversion cheap; generation is minutes on the L4) — it's the user's
-blind-listening time, which doesn't parallelize. Sweep design should
-economize on that, not on compute: narrow the maqam count before narrowing
-the alpha count.
+**Target:** `docs/investigation_generation_knobs.md`, branch
+`pron-lora-knobs-investigation` (main repo). **Report pending.**
 
 ## Next step
 
-**In flight:** a fine sweep dispatched to the coding agent — checkpoint
-fixed at 3050, alpha ∈ {0.2, 0.3, 0.55, 0.65}, **Hijaz + Kurd only** (not
-all 4 maqams — reusing existing scored a0/a0.5 tracks for those two rather
-than regenerating). Output: `PRON_FINE_SWEEP_INPUT/` + a new
-`KEY_open_after_listening.txt` on branch `pron-lora-ar-only`, same
-blind-then-reveal method as the coarse sweep (new seed: 20260925).
-
-**Next session:** user will bring the completed blind evaluation of these
-8 tracks. Decode against the new key, plot alpha (0.2→0.65) vs score for
-Hijaz and Kurd separately, and check two things: (1) does anything beat
-0.5, i.e. is there a real peak or is 0.5 just "fine within noise," and
-(2) does Kurd's gap to Hijaz shrink at any alpha, or does it stay
-maqam-specific regardless of alpha (which would point away from more
-alpha tuning and toward a Kurd-specific investigation instead).
-
-Once the fine sweep is settled: bake the production merge, then look at
-the `في ذمة الله` caption text as a separate, unrelated task.
+1. Bake the production merge now: `c3050_a0.5` primary, `c3050_a0.3`
+   fallback. Not blocked by anything below.
+2. When the knobs investigation report lands: spot-check its 1-2 strongest
+   claims against the actual source/files before trusting them (see lesson
+   above), then design — but don't yet run — a small, cheap empirical test
+   of the top 2-3 candidate knobs (sampling params need no merge, so this
+   is free; checkpoint 1525 needs one ~3.5s merge).
+3. Dispatch the Kurd lyric-swap test (4 tracks: Kurd-lyric-on-Hijaz,
+   Hijaz-lyric-on-Kurd, at a0 and c3050_a0.5) whenever there's listening
+   bandwidth for it — independent of (2).
+4. `في ذمة الله` lyric-text check stays a separate, low-priority task.
 
 ## Maintaining this file
 
 Update only when a real decision, rejected idea, corrected assumption, or
-generalizable lesson lands. Keep it short — this file was cut down hard in
-session 14 specifically because it had accumulated too much historical
-narrative that's already safe in git history. Resist letting it regrow into
-a session-by-session log; a link to the relevant commit/branch is enough
-for anything that's just "what happened."
+generalizable lesson lands. Keep it short. Resist letting it regrow into a
+session-by-session log; a link to the relevant commit/branch is enough for
+anything that's just "what happened."
